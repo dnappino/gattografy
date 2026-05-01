@@ -20,6 +20,7 @@ import {
   Menu,
   MessageCircle,
   PawPrint,
+  Phone,
   Plus,
   Search,
   Settings,
@@ -50,112 +51,87 @@ const catPhotos = [
 const seedColonies = [
   {
     id: 1,
-    name: "Giardini di Via Padova",
-    zone: "Via Padova, 96 - Milano",
-    caretaker: "Laura B.",
-    admin: "Sara",
-    collaborators: ["Laura B.", "Marco T."],
-    aslDeclared: true,
-    status: "Attiva",
-    cats: 18,
-    kittens: 3,
-    updated: "oggi",
-    x: 43,
-    y: 36,
-    lat: 45.4962,
-    lng: 9.2235,
-    priority: "rescue",
+    name: "Colonia felina della Floridiana",
+    zone: "Villa Floridiana - Napoli",
+    caretaker: "Da verificare",
+    admin: "ilaria_nappino",
+    collaborators: [],
+    aslDeclared: false,
+    status: "Da verificare",
+    cats: 0,
+    kittens: 0,
+    updated: "fonte pubblica",
+    lat: 40.8386,
+    lng: 14.2305,
+    registryNumber: "NA-VER-001",
+    locationContext: "Parco pubblico; colonia storica citata da fonti giornalistiche.",
+    healthNotes: "Dati sanitari da verificare con tutori e ASL Napoli 1 Centro.",
+    sourceLabel: "Ottopagine / Repubblica / Corriere Napoli",
+    sourceUrl: "https://www.ottopagine.it/na/attualita/354538/napoli-villa-floridiana-sconvolto-l-habitat-abituale-del-parco.shtml",
     photos: [catPhotos[0], catPhotos[1], catPhotos[2], catPhotos[3]],
   },
   {
     id: 2,
-    name: "Cortile di Via Prina",
-    zone: "Via Prina, 15 - Milano",
-    caretaker: "Marco T.",
-    admin: "Marco T.",
-    collaborators: ["Sara"],
+    name: "Colonia felina dei Quartieri Spagnoli",
+    zone: "Ex Ospedale Militare, Salita Trinità delle Monache - Napoli",
+    caretaker: "Da verificare",
+    admin: "ilaria_nappino",
+    collaborators: [],
     aslDeclared: false,
-    status: "Attiva",
-    cats: 12,
-    kittens: 1,
-    updated: "ieri",
-    x: 72,
-    y: 56,
-    lat: 45.4831,
-    lng: 9.1818,
+    status: "Da verificare",
+    cats: 8,
+    kittens: 0,
+    updated: "fonte pubblica",
+    lat: 40.8431,
+    lng: 14.2444,
+    registryNumber: "NA-VER-002",
+    locationContext: "Colonia menzionata in relazione allo spostamento dall'ex Mercatino di Sant'Anna verso l'ex Ospedale Militare.",
+    healthNotes: "La fonte cita sopralluogo ASL Napoli 1 Centro e otto gatti; dati sanitari individuali da censire.",
+    sourceLabel: "Gazzetta di Napoli / Corriere Napoli",
+    sourceUrl: "https://www.gazzettadinapoli.it/notizie/gatti-comune-salva-colonia-dei-quartieri-spagnoli-verra-spostata-nellex-ospedale-militare/",
     photos: [catPhotos[2], catPhotos[4], catPhotos[1]],
   },
   {
     id: 3,
-    name: "Parco Trotter",
-    zone: "Via Giacosa, 46 - Milano",
-    caretaker: "Elisa R.",
-    admin: "Elisa R.",
-    collaborators: ["Laura B."],
-    aslDeclared: true,
-    status: "Monitoraggio",
-    cats: 9,
+    name: "Colonie feline delle Vele di Scampia",
+    zone: "Vele di Scampia - Napoli",
+    caretaker: "Da verificare",
+    admin: "ilaria_nappino",
+    collaborators: [],
+    aslDeclared: false,
+    status: "Da verificare",
+    cats: 0,
     kittens: 0,
-    updated: "2 giorni fa",
-    x: 30,
-    y: 42,
-    lat: 45.4947,
-    lng: 9.2224,
+    updated: "fonte pubblica",
+    lat: 40.8997,
+    lng: 14.2372,
+    registryNumber: "NA-VER-003",
+    locationContext: "Area residenziale; fonti pubbliche parlano di molte colonie feline da tutelare durante gli abbattimenti.",
+    healthNotes: "Area ampia: richiede sopralluogo e separazione in colonie specifiche.",
+    sourceLabel: "Fanpage Napoli",
+    sourceUrl: "https://www.fanpage.it/napoli/non-abbattete-le-vele-di-scampia-sono-piene-di-gatti-appello-degli-animalisti-il-comune-li-salveremo/",
     photos: [catPhotos[5], catPhotos[0]],
   },
   {
     id: 4,
-    name: "Area Ferrovia Lambrate",
-    zone: "Via Conte Rosso - Milano",
-    caretaker: "Gruppo Lambrate",
-    admin: "Gruppo Lambrate",
-    collaborators: ["Sara", "Elisa R."],
-    aslDeclared: false,
-    status: "Monitoraggio",
-    cats: 7,
-    kittens: 0,
-    updated: "3 giorni fa",
-    x: 62,
-    y: 28,
-    lat: 45.4838,
-    lng: 9.2375,
-    photos: [catPhotos[3], catPhotos[2]],
-  },
-  {
-    id: 5,
-    name: "Orto di via San Faustino",
-    zone: "Via San Faustino, 8 - Milano",
-    caretaker: "Paola C.",
-    admin: "Paola C.",
-    collaborators: [],
-    aslDeclared: false,
-    status: "Sospesa",
-    cats: 5,
-    kittens: 0,
-    updated: "1 settimana fa",
-    x: 23,
-    y: 62,
-    lat: 45.4779,
-    lng: 9.2388,
-    photos: [catPhotos[4], catPhotos[5]],
-  },
-  {
-    id: 6,
-    name: "Angiporto dei Caserti",
-    zone: "Via Angiporto dei Caserti - Napoli",
-    caretaker: "ilaria_nappino",
+    name: "Colonia felina Via Jannelli - Parco Vanna",
+    zone: "Via Gabriele Jannelli, altezza Parco Vanna - Napoli",
+    caretaker: "Da verificare",
     admin: "ilaria_nappino",
     collaborators: [],
     aslDeclared: false,
-    status: "Test",
+    status: "Da verificare",
     cats: 0,
     kittens: 0,
-    updated: "adesso",
-    x: 52,
-    y: 68,
-    lat: 40.8504,
-    lng: 14.2656,
-    photos: [catPhotos[5]],
+    updated: "fonte pubblica",
+    lat: 40.8587,
+    lng: 14.2239,
+    registryNumber: "NA-VER-004",
+    locationContext: "Vomero; colonia felina curata da volontaria e citata in una fonte pubblica storica.",
+    healthNotes: "Stato attuale da confermare in loco.",
+    sourceLabel: "Il Roma",
+    sourceUrl: "https://www.ilroma.net/news/cronaca/162664/via-jannelli-ignoti-danno-fuoco-a-una-colonia-di-gatti.html",
+    photos: [catPhotos[3], catPhotos[4]],
   },
 ];
 
@@ -286,6 +262,24 @@ function mapDbColony(row, index = 0) {
     cats: row.cat_count ?? 0,
     kittens: 0,
     updated: "da DB",
+    registryNumber: row.registry_number,
+    locationContext: row.location_context,
+    healthLastUpdated: row.health_last_updated,
+    healthRecordDate: row.health_record_date,
+    volunteerName: row.volunteer_name,
+    volunteerPhone: row.volunteer_phone,
+    volunteerCallHours: row.volunteer_call_hours,
+    totalMales: row.total_males ?? 0,
+    sterilizedMales: row.sterilized_males ?? 0,
+    unsterilizedMales: row.unsterilized_males ?? 0,
+    totalFemales: row.total_females ?? 0,
+    sterilizedFemales: row.sterilized_females ?? 0,
+    unsterilizedFemales: row.unsterilized_females ?? 0,
+    totalSterilized: row.total_sterilized ?? 0,
+    totalUnsterilized: row.total_unsterilized ?? 0,
+    healthNotes: row.health_notes,
+    sourceLabel: row.source_label,
+    sourceUrl: row.source_url,
     lat: row.lat,
     lng: row.lng,
     photos: [catPhotos[index % catPhotos.length]],
@@ -383,7 +377,7 @@ function App() {
     try {
       const { data, error } = await supabase
         .from("colonies")
-        .select("id,name,address,city,lat,lng,status,asl_declared,created_at")
+        .select("id,name,address,city,location_context,lat,lng,status,asl_declared,registry_number,health_last_updated,health_record_date,volunteer_name,volunteer_phone,volunteer_call_hours,total_males,sterilized_males,unsterilized_males,total_females,sterilized_females,unsterilized_females,total_sterilized,total_unsterilized,health_notes,source_label,source_url,created_at")
         .order("created_at", { ascending: false });
 
       if (error) throw error;
@@ -448,14 +442,22 @@ function App() {
           name: colonyName,
           address,
           city,
+          location_context: newColony.locationContext.trim() || null,
           lat: parsedLat,
           lng: parsedLng,
           status: "Attiva",
           asl_declared: newColony.aslDeclared,
+          registry_number: newColony.registryNumber.trim() || null,
+          health_last_updated: newColony.healthLastUpdated || null,
+          health_record_date: newColony.healthRecordDate || null,
+          volunteer_name: newColony.volunteerName.trim() || null,
+          volunteer_phone: newColony.volunteerPhone.trim() || null,
+          volunteer_call_hours: newColony.volunteerCallHours.trim() || null,
+          health_notes: newColony.healthNotes.trim() || null,
           created_by: currentUser.id,
           colony_admin_id: currentUser.id,
         })
-        .select("id,name,address,city,lat,lng,status,asl_declared,created_at")
+        .select("id,name,address,city,location_context,lat,lng,status,asl_declared,registry_number,health_last_updated,health_record_date,volunteer_name,volunteer_phone,volunteer_call_hours,total_males,sterilized_males,unsterilized_males,total_females,sterilized_females,unsterilized_females,total_sterilized,total_unsterilized,health_notes,source_label,source_url,created_at")
         .single();
 
       if (error) throw error;
@@ -983,6 +985,7 @@ function DetailPanel({
         onReplaceAdmin={onReplaceAdmin}
         onApproveParticipation={onApproveParticipation}
       />
+      <SanitaryPanel selected={selected} />
       <MediaStrip photos={selected.photos} title="Foto della colonia" />
       <section className="cats-section">
         <div className="section-title">
@@ -1178,6 +1181,53 @@ function AdminPanel({
   );
 }
 
+function SanitaryPanel({ selected }) {
+  const totals = [
+    ["Maschi", selected.totalMales ?? 0],
+    ["Maschi sterilizzati", selected.sterilizedMales ?? 0],
+    ["Maschi non sterilizzati", selected.unsterilizedMales ?? 0],
+    ["Femmine", selected.totalFemales ?? 0],
+    ["Femmine sterilizzate", selected.sterilizedFemales ?? 0],
+    ["Femmine non sterilizzate", selected.unsterilizedFemales ?? 0],
+    ["Totale sterilizzati", selected.totalSterilized ?? 0],
+    ["Totale non sterilizzati", selected.totalUnsterilized ?? 0],
+  ];
+
+  return (
+    <section className="sanitary-panel">
+      <div className="section-title compact">
+        <h2>Scheda sanitaria colonia</h2>
+        <span>{selected.registryNumber || "Registro non assegnato"}</span>
+      </div>
+      <div className="sanitary-grid">
+        <Fact icon={Clock3} label="Ultimo aggiornamento" value={selected.healthLastUpdated || "Da inserire"} />
+        <Fact icon={ShieldCheck} label="Data scheda" value={selected.healthRecordDate || "Da inserire"} />
+        <Fact icon={Users} label="Volontario" value={selected.volunteerName || selected.caretaker || "Da inserire"} />
+        <Fact icon={Phone} label="Telefono/orari" value={selected.volunteerPhone || selected.volunteerCallHours || "Da inserire"} />
+      </div>
+      <div className="health-totals">
+        {totals.map(([label, value]) => (
+          <span key={label}>
+            <strong>{value}</strong>
+            {label}
+          </span>
+        ))}
+      </div>
+      {(selected.locationContext || selected.healthNotes || selected.sourceUrl) && (
+        <p className="health-notes">
+          {selected.locationContext && <span>{selected.locationContext}</span>}
+          {selected.healthNotes && <span>{selected.healthNotes}</span>}
+          {selected.sourceUrl && (
+            <a href={selected.sourceUrl} target="_blank" rel="noreferrer">
+              Fonte: {selected.sourceLabel || selected.sourceUrl}
+            </a>
+          )}
+        </p>
+      )}
+    </section>
+  );
+}
+
 function SocialPanel({
   friendRequests,
   messages,
@@ -1258,7 +1308,17 @@ function ColoniesSection({
     lat: "",
     lng: "",
     aslDeclared: false,
+    registryNumber: "",
+    locationContext: "",
+    healthLastUpdated: "",
+    healthRecordDate: "",
+    volunteerName: "",
+    volunteerPhone: "",
+    volunteerCallHours: "",
+    healthNotes: "",
   });
+  const [geocodeStatus, setGeocodeStatus] = useState("");
+  const [isGeocoding, setGeocoding] = useState(false);
   const declaredCount = colonies.filter((colony) => colony.aslDeclared).length;
   const totalCats = colonies.reduce((sum, colony) => sum + colony.cats, 0);
   const updateField = (field) => (event) => {
@@ -1278,8 +1338,52 @@ function ColoniesSection({
       lat: "",
       lng: "",
       aslDeclared: false,
+      registryNumber: "",
+      locationContext: "",
+      healthLastUpdated: "",
+      healthRecordDate: "",
+      volunteerName: "",
+      volunteerPhone: "",
+      volunteerCallHours: "",
+      healthNotes: "",
     });
     setCreating(false);
+  }
+
+  async function geocodeAddress() {
+    const query = [newColony.address, newColony.city, "Italia"]
+      .filter(Boolean)
+      .join(", ");
+
+    if (!newColony.address.trim() || !newColony.city.trim()) {
+      setGeocodeStatus("Inserisci indirizzo e città prima del geocoding.");
+      return;
+    }
+
+    setGeocoding(true);
+    setGeocodeStatus("Ricerca coordinate...");
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&limit=1&addressdetails=1&q=${encodeURIComponent(query)}`,
+      );
+      if (!response.ok) throw new Error("Servizio geocoding non disponibile.");
+      const results = await response.json();
+      const first = results[0];
+      if (!first) {
+        setGeocodeStatus("Nessuna coordinata trovata. Inseriscile manualmente.");
+        return;
+      }
+      setNewColony((current) => ({
+        ...current,
+        lat: Number(first.lat).toFixed(6),
+        lng: Number(first.lon).toFixed(6),
+      }));
+      setGeocodeStatus(`Coordinate trovate: ${first.display_name}`);
+    } catch (error) {
+      setGeocodeStatus(error.message ?? "Errore geocoding.");
+    } finally {
+      setGeocoding(false);
+    }
   }
 
   return (
@@ -1333,6 +1437,74 @@ function ColoniesSection({
               value={newColony.lng}
               onChange={updateField("lng")}
               placeholder="14.2656"
+            />
+          </label>
+          <button type="button" className="secondary-button" onClick={geocodeAddress} disabled={isGeocoding}>
+            {isGeocoding ? "Cerco..." : "Trova coordinate"}
+          </button>
+          {geocodeStatus && <p className="form-note">{geocodeStatus}</p>}
+          <label>
+            Numero registro
+            <input
+              value={newColony.registryNumber}
+              onChange={updateField("registryNumber")}
+              placeholder="es. NA-001"
+            />
+          </label>
+          <label>
+            Contesto luogo
+            <input
+              value={newColony.locationContext}
+              onChange={updateField("locationContext")}
+              placeholder="giardino, cortile, area pubblica..."
+            />
+          </label>
+          <label>
+            Data ultimo aggiornamento sanitario
+            <input
+              type="date"
+              value={newColony.healthLastUpdated}
+              onChange={updateField("healthLastUpdated")}
+            />
+          </label>
+          <label>
+            Data scheda colonia
+            <input
+              type="date"
+              value={newColony.healthRecordDate}
+              onChange={updateField("healthRecordDate")}
+            />
+          </label>
+          <label>
+            Volontario referente
+            <input
+              value={newColony.volunteerName}
+              onChange={updateField("volunteerName")}
+              placeholder="nome e cognome"
+            />
+          </label>
+          <label>
+            Telefono volontario
+            <input
+              value={newColony.volunteerPhone}
+              onChange={updateField("volunteerPhone")}
+              placeholder="numero e orari"
+            />
+          </label>
+          <label>
+            Orari telefonici
+            <input
+              value={newColony.volunteerCallHours}
+              onChange={updateField("volunteerCallHours")}
+              placeholder="es. 18:00 - 20:00"
+            />
+          </label>
+          <label>
+            Note sanitarie
+            <input
+              value={newColony.healthNotes}
+              onChange={updateField("healthNotes")}
+              placeholder="sterilizzazioni, sopralluoghi, criticità"
             />
           </label>
           <label className="inline-check">

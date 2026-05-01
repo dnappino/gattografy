@@ -450,6 +450,28 @@ kbd {
   align-self: end;
 }
 
+.secondary-button {
+  align-self: end;
+  min-height: 40px;
+  border-radius: 7px;
+  background: var(--blue-soft);
+  color: var(--blue);
+  font-weight: 850;
+}
+
+.secondary-button:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
+.form-note {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
 .metric-card {
   display: grid;
   gap: 7px;
@@ -1055,6 +1077,59 @@ select {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: #fbfdfc;
+}
+
+.sanitary-panel {
+  margin-top: 18px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fbfdfc;
+}
+
+.sanitary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.health-totals {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.health-totals span {
+  display: grid;
+  gap: 3px;
+  min-height: 68px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 750;
+}
+
+.health-totals strong {
+  color: var(--green);
+  font-size: 1.15rem;
+}
+
+.health-notes {
+  display: grid;
+  gap: 5px;
+  margin: 10px 0 0;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.health-notes a {
+  color: var(--green);
+  font-weight: 800;
+  text-decoration: none;
 }
 
 .admin-grid {
