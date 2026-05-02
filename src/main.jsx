@@ -3831,6 +3831,16 @@ function CommunitySection({
 function ForumPanel({ threads, onCreateThread, onAddPost }) {
   const [draft, setDraft] = useState({ title: "", body: "", category: "Generale" });
   const [replyDrafts, setReplyDrafts] = useState({});
+  const [selectedThreadId, setSelectedThreadId] = useState(threads[0]?.id ?? "");
+  const selectedThread = threads.find((thread) => thread.id === selectedThreadId) ?? threads[0] ?? null;
+
+  useEffect(() => {
+    if (!threads.length) {
+      setSelectedThreadId("");
+      return;
+    }
+    if (!threads.some((thread) => thread.id === selectedThreadId)) setSelectedThreadId(threads[0].id);
+  }, [threads, selectedThreadId]);
 
   async function submitThread(event) {
     event.preventDefault();
@@ -3845,9 +3855,28 @@ function ForumPanel({ threads, onCreateThread, onAddPost }) {
 
   return (
     <section className="forum-panel">
-      <form className="social-card forum-compose" onSubmit={submitThread}>
-        <h2>Forum</h2>
-        <div className="forum-form-grid">
+      <div className="forum-sidebar social-card">
+        <div className="forum-heading">
+          <h2>Forum</h2>
+          <span>{threads.length}</span>
+        </div>
+        <div className="forum-thread-list">
+          {threads.map((thread) => (
+            <button
+              type="button"
+              className={thread.id === selectedThread?.id ? "forum-thread-row active" : "forum-thread-row"}
+              key={thread.id}
+              onClick={() => setSelectedThreadId(thread.id)}
+            >
+              <span>{thread.category}</span>
+              <strong>{thread.title}</strong>
+              <small>{thread.author} · {thread.time} · {(thread.posts ?? []).length} risposte</small>
+            </button>
+          ))}
+          {!threads.length && <p className="empty-copy">Nessun thread aperto.</p>}
+        </div>
+        <form className="forum-compose compact-compose" onSubmit={submitThread}>
+          <h3>Nuovo thread</h3>
           <label>
             Categoria
             <select value={draft.category} onChange={(event) => setDraft((current) => ({ ...current, category: event.target.value }))}>
@@ -3859,44 +3888,55 @@ function ForumPanel({ threads, onCreateThread, onAddPost }) {
             </select>
           </label>
           <label>
-            Titolo thread
+            Titolo
             <input value={draft.title} onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))} />
           </label>
-          <label className="wide-field">
+          <label>
             Testo
             <textarea value={draft.body} onChange={(event) => setDraft((current) => ({ ...current, body: event.target.value }))} />
           </label>
-        </div>
-        <button className="primary">Apri thread</button>
-      </form>
-      <div className="forum-thread-list">
-        {threads.map((thread) => (
-          <article className="forum-thread" key={thread.id}>
-            <span>{thread.category}</span>
-            <strong>{thread.title}</strong>
-            {thread.body && <p>{thread.body}</p>}
-            <small>{thread.author} ? {thread.time}</small>
-            {(thread.posts ?? []).map((post) => (
-              <div className="forum-post" key={post.id}>
-                <strong>{post.author}</strong>
-                <p>{post.body}</p>
-              </div>
-            ))}
-            <div className="message-input">
+          <button className="primary">Apri thread</button>
+        </form>
+      </div>
+      <article className="forum-reader social-card">
+        {selectedThread ? (
+          <>
+            <header className="forum-reader-title">
+              <span>{selectedThread.category}</span>
+              <h2>{selectedThread.title}</h2>
+              <small>{selectedThread.author} · {selectedThread.time}</small>
+            </header>
+            {selectedThread.body && <p className="forum-body">{selectedThread.body}</p>}
+            <section className="forum-replies">
+              <h3>Risposte</h3>
+              {(selectedThread.posts ?? []).map((post) => (
+                <div className="forum-post" key={post.id}>
+                  <strong>{post.author}</strong>
+                  <p>{post.body}</p>
+                  <small>{post.time}</small>
+                </div>
+              ))}
+              {!selectedThread.posts?.length && <p className="empty-copy">Nessuna risposta.</p>}
+            </section>
+            <div className="message-input forum-reply-box">
               <input
-                value={replyDrafts[thread.id] ?? ""}
-                onChange={(event) => setReplyDrafts((items) => ({ ...items, [thread.id]: event.target.value }))}
-                placeholder="Rispondi al thread..."
+                value={replyDrafts[selectedThread.id] ?? ""}
+                onChange={(event) => setReplyDrafts((items) => ({ ...items, [selectedThread.id]: event.target.value }))}
+                placeholder="Scrivi una risposta..."
               />
-              <button onClick={() => submitReply(thread.id)}>
+              <button onClick={() => submitReply(selectedThread.id)}>
                 <MessageCircle size={17} />
                 Rispondi
               </button>
             </div>
-          </article>
-        ))}
-        {!threads.length && <p className="empty-copy">Nessun thread aperto.</p>}
-      </div>
+          </>
+        ) : (
+          <div className="empty-state">
+            <MessageCircle size={28} />
+            <strong>Nessun thread selezionato</strong>
+          </div>
+        )}
+      </article>
     </section>
   );
 }

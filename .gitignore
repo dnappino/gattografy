@@ -5,3 +5,6 @@ dist/
 npm-debug.log*
 vite*.log
 *.local
+
+# Local Netlify folder
+.netlify

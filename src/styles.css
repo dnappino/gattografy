@@ -652,10 +652,28 @@ kbd {
   grid-template-columns: 1fr 1fr;
 }
 
+.community-grid .table-panel {
+  padding-bottom: 8px;
+}
+
+.community-grid .table-panel .request-row,
+.page-section > .table-panel .request-row {
+  margin: 10px 12px 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+}
+
+.community-grid .table-panel .request-row:first-of-type,
+.page-section > .table-panel .request-row:first-of-type {
+  margin-top: 12px;
+}
+
 .messages-layout,
 .forum-panel {
   display: grid;
-  grid-template-columns: minmax(300px, 0.8fr) minmax(420px, 1.2fr);
+  grid-template-columns: minmax(300px, 0.88fr) minmax(440px, 1.12fr);
   gap: 12px;
 }
 
@@ -680,8 +698,42 @@ kbd {
   align-self: start;
 }
 
+.forum-sidebar,
+.forum-reader {
+  min-height: 520px;
+}
+
+.forum-heading,
+.forum-reader-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.forum-heading h2,
+.forum-reader-title h2,
+.compact-compose h3,
+.forum-replies h3 {
+  margin: 0;
+}
+
+.forum-heading span {
+  min-width: 30px;
+  min-height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--mint);
+  color: var(--green);
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
 .message-compose label,
-.forum-form-grid label {
+.forum-form-grid label,
+.compact-compose label {
   display: grid;
   gap: 6px;
   color: var(--muted);
@@ -693,7 +745,10 @@ kbd {
 .message-compose textarea,
 .forum-form-grid input,
 .forum-form-grid select,
-.forum-form-grid textarea {
+.forum-form-grid textarea,
+.compact-compose input,
+.compact-compose select,
+.compact-compose textarea {
   width: 100%;
   min-height: 40px;
   border: 1px solid var(--line);
@@ -709,6 +764,17 @@ kbd {
   resize: vertical;
 }
 
+.compact-compose {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.compact-compose textarea {
+  min-height: 82px;
+  resize: vertical;
+}
+
 .direct-list {
   max-height: 460px;
 }
@@ -721,20 +787,35 @@ kbd {
 
 .forum-thread-list {
   display: grid;
-  gap: 10px;
-}
-
-.forum-thread {
-  display: grid;
   gap: 8px;
-  padding: 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: #fff;
-  box-shadow: var(--small-shadow);
 }
 
-.forum-thread > span {
+.forum-thread-row {
+  width: 100%;
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.forum-thread-row.active {
+  border-color: #9fc8b5;
+  background: #f8fcfa;
+  box-shadow: inset 3px 0 0 var(--green);
+}
+
+.forum-thread-row:hover {
+  border-color: #bdd6ca;
+  background: #fbfdfc;
+}
+
+.forum-thread-row > span,
+.forum-reader-title span {
   width: max-content;
   padding: 4px 8px;
   border-radius: 999px;
@@ -744,23 +825,77 @@ kbd {
   font-weight: 850;
 }
 
-.forum-thread strong,
-.forum-thread p,
-.forum-thread small {
+.forum-thread-row strong {
+  font-size: 0.92rem;
+  line-height: 1.25;
+}
+
+.forum-thread-row small,
+.forum-reader-title small {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.forum-reader {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+}
+
+.forum-reader-title {
+  display: grid;
+  justify-content: stretch;
+}
+
+.forum-reader-title h2 {
+  font-size: 1.32rem;
+  line-height: 1.15;
+}
+
+.forum-body {
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fbfdfc;
+  color: #2f3e3a;
+  line-height: 1.55;
+}
+
+.forum-replies {
+  display: grid;
+  gap: 10px;
+}
+
+.forum-replies h3 {
+  font-size: 0.96rem;
+}
+
+.forum-thread-row strong,
+.forum-thread-row small,
+.forum-post strong,
+.forum-post p,
+.forum-post small {
   margin: 0;
 }
 
-.forum-thread p,
-.forum-thread small {
+.forum-post p,
+.forum-post small {
   color: var(--muted);
   line-height: 1.4;
 }
 
 .forum-post {
-  padding: 9px;
+  display: grid;
+  gap: 5px;
+  padding: 10px;
   border-radius: 7px;
   background: #f8fcfa;
   border: 1px solid var(--line);
+}
+
+.forum-reply-box {
+  margin-top: 2px;
 }
 
 .padded {
