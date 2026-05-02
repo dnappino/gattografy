@@ -515,7 +515,7 @@ function App() {
     try {
       const { data, error } = await supabase
         .from("colonies")
-        .select("id,name,address,city,location_context,lat,lng,status,asl_declared,registry_number,health_last_updated,health_record_date,volunteer_name,volunteer_phone,volunteer_call_hours,total_males,sterilized_males,unsterilized_males,total_females,sterilized_females,unsterilized_females,total_sterilized,total_unsterilized,health_notes,source_label,source_url,photo_url,created_by,colony_admin_id,created_at,admin_profile:profiles!colonies_colony_admin_id_fkey(username,email,avatar_url),members:colony_members(role,profile:profiles(username,email,avatar_url))")
+        .select("id,name,address,city,location_context,lat,lng,status,asl_declared,registry_number,health_last_updated,health_record_date,volunteer_name,volunteer_phone,volunteer_call_hours,total_males,sterilized_males,unsterilized_males,total_females,sterilized_females,unsterilized_females,total_sterilized,total_unsterilized,health_notes,source_label,source_url,photo_url,created_by,colony_admin_id,created_at,admin_profile:profiles!colonies_colony_admin_id_fkey(username,email,avatar_url),members:colony_members(role,profile:profiles!colony_members_profile_id_fkey(username,email,avatar_url))")
         .order("created_at", { ascending: false });
 
       if (error) throw error;
@@ -598,7 +598,7 @@ function App() {
             .order("created_at", { ascending: true }),
           supabase
             .from("participation_requests")
-            .select("id,colony_id,profile_id,message,status,created_at,profile:profiles(username)")
+            .select("id,colony_id,profile_id,message,status,created_at,profile:profiles!participation_requests_profile_id_fkey(username)")
             .eq("colony_id", colonyId)
             .order("created_at", { ascending: false }),
           supabase
@@ -890,7 +890,7 @@ function App() {
           created_by: currentUser.id,
           colony_admin_id: currentUser.id,
         })
-        .select("id,name,address,city,location_context,lat,lng,status,asl_declared,registry_number,health_last_updated,health_record_date,volunteer_name,volunteer_phone,volunteer_call_hours,total_males,sterilized_males,unsterilized_males,total_females,sterilized_females,unsterilized_females,total_sterilized,total_unsterilized,health_notes,source_label,source_url,photo_url,created_by,colony_admin_id,created_at,admin_profile:profiles!colonies_colony_admin_id_fkey(username,email,avatar_url),members:colony_members(role,profile:profiles(username,email,avatar_url))")
+        .select("id,name,address,city,location_context,lat,lng,status,asl_declared,registry_number,health_last_updated,health_record_date,volunteer_name,volunteer_phone,volunteer_call_hours,total_males,sterilized_males,unsterilized_males,total_females,sterilized_females,unsterilized_females,total_sterilized,total_unsterilized,health_notes,source_label,source_url,photo_url,created_by,colony_admin_id,created_at,admin_profile:profiles!colonies_colony_admin_id_fkey(username,email,avatar_url),members:colony_members(role,profile:profiles!colony_members_profile_id_fkey(username,email,avatar_url))")
         .single();
 
       if (error) throw error;
@@ -908,7 +908,7 @@ function App() {
             .from("colonies")
             .update({ photo_url: photoUrl })
             .eq("id", data.id)
-            .select("id,name,address,city,location_context,lat,lng,status,asl_declared,registry_number,health_last_updated,health_record_date,volunteer_name,volunteer_phone,volunteer_call_hours,total_males,sterilized_males,unsterilized_males,total_females,sterilized_females,unsterilized_females,total_sterilized,total_unsterilized,health_notes,source_label,source_url,photo_url,created_by,colony_admin_id,created_at,admin_profile:profiles!colonies_colony_admin_id_fkey(username,email,avatar_url),members:colony_members(role,profile:profiles(username,email,avatar_url))")
+            .select("id,name,address,city,location_context,lat,lng,status,asl_declared,registry_number,health_last_updated,health_record_date,volunteer_name,volunteer_phone,volunteer_call_hours,total_males,sterilized_males,unsterilized_males,total_females,sterilized_females,unsterilized_females,total_sterilized,total_unsterilized,health_notes,source_label,source_url,photo_url,created_by,colony_admin_id,created_at,admin_profile:profiles!colonies_colony_admin_id_fkey(username,email,avatar_url),members:colony_members(role,profile:profiles!colony_members_profile_id_fkey(username,email,avatar_url))")
             .single();
           if (photoData) savedColony = photoData;
         }
@@ -1029,7 +1029,7 @@ function App() {
           photo_url: photoUrl || null,
         })
         .eq("id", colonyId)
-        .select("id,name,address,city,location_context,lat,lng,status,asl_declared,registry_number,health_last_updated,health_record_date,volunteer_name,volunteer_phone,volunteer_call_hours,total_males,sterilized_males,unsterilized_males,total_females,sterilized_females,unsterilized_females,total_sterilized,total_unsterilized,health_notes,source_label,source_url,photo_url,created_by,colony_admin_id,created_at,admin_profile:profiles!colonies_colony_admin_id_fkey(username,email,avatar_url),members:colony_members(role,profile:profiles(username,email,avatar_url))")
+        .select("id,name,address,city,location_context,lat,lng,status,asl_declared,registry_number,health_last_updated,health_record_date,volunteer_name,volunteer_phone,volunteer_call_hours,total_males,sterilized_males,unsterilized_males,total_females,sterilized_females,unsterilized_females,total_sterilized,total_unsterilized,health_notes,source_label,source_url,photo_url,created_by,colony_admin_id,created_at,admin_profile:profiles!colonies_colony_admin_id_fkey(username,email,avatar_url),members:colony_members(role,profile:profiles!colony_members_profile_id_fkey(username,email,avatar_url))")
         .single();
 
       if (error) throw error;
@@ -1229,7 +1229,7 @@ function App() {
         message: "Vorrei collaborare alla gestione della colonia.",
         status: "pending",
       })
-      .select("id,colony_id,profile_id,message,status,created_at,profile:profiles(username)")
+      .select("id,colony_id,profile_id,message,status,created_at,profile:profiles!participation_requests_profile_id_fkey(username)")
       .single();
 
     if (error) {
