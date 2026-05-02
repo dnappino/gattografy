@@ -1217,9 +1217,6 @@ function Topbar({ currentUser, isAuthenticated, onOpenAuth, onLogout }) {
         <kbd>⌘K</kbd>
       </label>
       <div className="account">
-        <span className={isSupabaseConfigured ? "db-status connected" : "db-status"}>
-          {isSupabaseConfigured ? "DB collegato" : "Demo DB"}
-        </span>
         {isAuthenticated && (
           <button className="icon-btn alert" aria-label="Notifiche">
             <Bell size={19} />
