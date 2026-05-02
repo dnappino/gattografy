@@ -224,6 +224,10 @@ function MapBoundsTracker({ onBoundsChange }) {
 function mapDbColony(row, index = 0) {
   const city = row.city ? ` - ${row.city}` : "";
   const adminProfile = row.admin_profile ?? row.profiles ?? null;
+  const members = row.members ?? row.colony_members ?? [];
+  const collaborators = members
+    .map((member) => member.profile?.username)
+    .filter(Boolean);
 
   return {
     id: row.id,
@@ -233,9 +237,10 @@ function mapDbColony(row, index = 0) {
     zone: `${row.address}${city}`,
     caretaker: adminProfile?.username ?? "admin_default",
     admin: adminProfile?.username ?? "admin_default",
+    responsible: adminProfile?.username ?? "admin_default",
     adminId: row.colony_admin_id,
     createdBy: row.created_by,
-    collaborators: [],
+    collaborators,
     aslDeclared: row.asl_declared,
     status: row.status,
     cats: row.cat_count ?? 0,
@@ -279,7 +284,7 @@ function mapDbReports(rows, colonyList) {
       description: row.description ?? "",
       author: row.author?.username ?? "",
       createdAt: row.created_at,
-      tone: row.type === "rescue" ? "red" : row.type === "birth" ? "orange" : row.type === "problem" ? "orange" : "blue",
+      tone: row.type === "rescue" ? "red" : row.type === "birth" || row.type === "problem" || row.type === "adoption_request" ? "orange" : "blue",
     };
   });
 }
@@ -316,6 +321,32 @@ function mapRequestStatus(status) {
 function formatDate(value) {
   if (!value) return "";
   return new Intl.DateTimeFormat("it-IT", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+}
+
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value));
+}
+
+function distanceKm(from, colony) {
+  if (!from || !Number.isFinite(Number(colony.lat)) || !Number.isFinite(Number(colony.lng))) return Number.POSITIVE_INFINITY;
+  const earthRadius = 6371;
+  const dLat = ((Number(colony.lat) - from.lat) * Math.PI) / 180;
+  const dLng = ((Number(colony.lng) - from.lng) * Math.PI) / 180;
+  const lat1 = (from.lat * Math.PI) / 180;
+  const lat2 = (Number(colony.lat) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return earthRadius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function nearestColonyId(colonies, position, fallbackId) {
+  if (!colonies.length) return "";
+  if (!position) return fallbackId ?? colonies[0].id;
+  return colonies.reduce(
+    (nearest, colony) => (distanceKm(position, colony) < distanceKm(position, nearest) ? colony : nearest),
+    colonies[0],
+  ).id;
 }
 
 async function uploadPublicImage(supabase, bucket, file, folder) {
@@ -358,10 +389,12 @@ function App() {
   const [privateMessages, setPrivateMessages] = useState([]);
   const [forumThreads, setForumThreads] = useState([]);
   const [notifications, setNotifications] = useState([]);
+  const [changeLog, setChangeLog] = useState([]);
   const [isNotificationsOpen, setNotificationsOpen] = useState(false);
   const [messageDraft, setMessageDraft] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [mapBounds, setMapBounds] = useState(null);
+  const [userPosition, setUserPosition] = useState(null);
   const selected = useMemo(
     () => colonies.find((colony) => colony.id === selectedId) ?? colonies[0],
     [colonies, selectedId],
@@ -376,7 +409,8 @@ function App() {
       selected.admin === currentUser?.username ||
       selected.collaborators?.includes(currentUser?.username));
   const visibleCats = catsByColony[selected?.id] ?? [];
-  const helpReports = reports.filter((report) => report.type === "rescue" || report.type === "problem");
+  const helpReports = reports.filter((report) => report.type === "rescue" || report.type === "problem" || report.type === "adoption_request");
+  const defaultColonyId = nearestColonyId(colonies, userPosition, selected?.id);
   const menuCounts = {
     Segnalazioni: reports.filter((report) => report.status !== "closed").length,
     Messaggi: privateMessages.length,
@@ -428,6 +462,20 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setUserPosition({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        });
+      },
+      () => {},
+      { enableHighAccuracy: false, timeout: 7000, maximumAge: 300000 },
+    );
+  }, []);
+
+  useEffect(() => {
     if (!selected?.id) return;
     loadColonyActivity(selected.id);
   }, [selected?.id, isAuthenticated]);
@@ -467,7 +515,7 @@ function App() {
     try {
       const { data, error } = await supabase
         .from("colonies")
-        .select("id,name,address,city,location_context,lat,lng,status,asl_declared,registry_number,health_last_updated,health_record_date,volunteer_name,volunteer_phone,volunteer_call_hours,total_males,sterilized_males,unsterilized_males,total_females,sterilized_females,unsterilized_females,total_sterilized,total_unsterilized,health_notes,source_label,source_url,photo_url,created_by,colony_admin_id,created_at,admin_profile:profiles!colonies_colony_admin_id_fkey(username,email,avatar_url)")
+        .select("id,name,address,city,location_context,lat,lng,status,asl_declared,registry_number,health_last_updated,health_record_date,volunteer_name,volunteer_phone,volunteer_call_hours,total_males,sterilized_males,unsterilized_males,total_females,sterilized_females,unsterilized_females,total_sterilized,total_unsterilized,health_notes,source_label,source_url,photo_url,created_by,colony_admin_id,created_at,admin_profile:profiles!colonies_colony_admin_id_fkey(username,email,avatar_url),members:colony_members(role,profile:profiles(username,email,avatar_url))")
         .order("created_at", { ascending: false });
 
       if (error) throw error;
@@ -498,6 +546,7 @@ function App() {
   async function loadColonyActivity(colonyId) {
     const supabase = await getSupabaseClient();
     if (!supabase || !colonyId) return;
+    if (!isUuid(colonyId)) return;
 
     try {
       const [{ data: reportRows, error: reportError }, { data: catRows, error: catError }] =
@@ -535,7 +584,7 @@ function App() {
     if (!isAuthenticated) return;
 
     try {
-      const [{ data: commentRows }, { data: messageRows }, { data: requestRows }] =
+      const [{ data: commentRows }, { data: messageRows }, { data: requestRows }, { data: changeRows }] =
         await Promise.all([
           supabase
             .from("comments")
@@ -549,9 +598,15 @@ function App() {
             .order("created_at", { ascending: true }),
           supabase
             .from("participation_requests")
-            .select("id,colony_id,message,status,created_at,profile:profiles(username)")
+            .select("id,colony_id,profile_id,message,status,created_at,profile:profiles(username)")
             .eq("colony_id", colonyId)
             .order("created_at", { ascending: false }),
+          supabase
+            .from("change_log")
+            .select("id,colony_id,entity_type,entity_id,action,summary,created_at,actor:profiles(username)")
+            .eq("colony_id", colonyId)
+            .order("created_at", { ascending: false })
+            .limit(8),
         ]);
 
       setComments((commentRows ?? []).map((row) => row.body));
@@ -564,9 +619,20 @@ function App() {
       setParticipationRequests((requestRows ?? []).map((row) => ({
         id: row.id,
         colonyId: row.colony_id,
+        profileId: row.profile_id,
         user: row.profile?.username ?? "Utente",
         message: row.message ?? "",
         status: mapRequestStatus(row.status),
+      })));
+      setChangeLog((changeRows ?? []).map((row) => ({
+        id: row.id,
+        colonyId: row.colony_id,
+        entityType: row.entity_type,
+        entityId: row.entity_id,
+        action: row.action,
+        summary: row.summary,
+        actor: row.actor?.username ?? "Utente",
+        time: formatDate(row.created_at),
       })));
     } catch (error) {
       setDataStatus(`Errore lettura social: ${error.message}`);
@@ -707,6 +773,55 @@ function App() {
     if (currentUser?.role === "site_admin") await loadNotifications();
   }
 
+  async function notifyProfile(recipientId, type, title, body) {
+    if (!recipientId) return;
+    const localNotification = {
+      id: `local-${Date.now()}`,
+      title,
+      body,
+      type,
+      read: false,
+      time: "adesso",
+    };
+    if (recipientId === currentUser?.id) setNotifications((items) => [localNotification, ...items]);
+
+    const supabase = await getSupabaseClient();
+    if (!supabase) return;
+    await supabase.from("notifications").insert({
+      recipient_id: recipientId,
+      actor_id: currentUser?.id ?? null,
+      type,
+      title,
+      body,
+    });
+  }
+
+  async function trackChange(colonyId, entityType, entityId, action, summary) {
+    const localChange = {
+      id: `local-${Date.now()}`,
+      colonyId,
+      entityType,
+      entityId,
+      action,
+      summary,
+      actor: currentUser?.username ?? "Utente",
+      time: "adesso",
+    };
+    if (colonyId === selected?.id) setChangeLog((items) => [localChange, ...items].slice(0, 8));
+
+    const supabase = await getSupabaseClient();
+    if (!supabase || !currentUser?.id) return;
+    if (!isUuid(colonyId)) return;
+    await supabase.from("change_log").insert({
+      colony_id: colonyId,
+      entity_type: entityType,
+      entity_id: entityId ? String(entityId) : null,
+      action,
+      summary,
+      actor_id: currentUser.id,
+    });
+  }
+
   async function createColony(newColony) {
     if (!isAuthenticated) {
       setAuthMode("login");
@@ -775,7 +890,7 @@ function App() {
           created_by: currentUser.id,
           colony_admin_id: currentUser.id,
         })
-        .select("id,name,address,city,location_context,lat,lng,status,asl_declared,registry_number,health_last_updated,health_record_date,volunteer_name,volunteer_phone,volunteer_call_hours,total_males,sterilized_males,unsterilized_males,total_females,sterilized_females,unsterilized_females,total_sterilized,total_unsterilized,health_notes,source_label,source_url,photo_url,created_by,colony_admin_id,created_at,admin_profile:profiles!colonies_colony_admin_id_fkey(username,email,avatar_url)")
+        .select("id,name,address,city,location_context,lat,lng,status,asl_declared,registry_number,health_last_updated,health_record_date,volunteer_name,volunteer_phone,volunteer_call_hours,total_males,sterilized_males,unsterilized_males,total_females,sterilized_females,unsterilized_females,total_sterilized,total_unsterilized,health_notes,source_label,source_url,photo_url,created_by,colony_admin_id,created_at,admin_profile:profiles!colonies_colony_admin_id_fkey(username,email,avatar_url),members:colony_members(role,profile:profiles(username,email,avatar_url))")
         .single();
 
       if (error) throw error;
@@ -793,7 +908,7 @@ function App() {
             .from("colonies")
             .update({ photo_url: photoUrl })
             .eq("id", data.id)
-            .select("id,name,address,city,location_context,lat,lng,status,asl_declared,registry_number,health_last_updated,health_record_date,volunteer_name,volunteer_phone,volunteer_call_hours,total_males,sterilized_males,unsterilized_males,total_females,sterilized_females,unsterilized_females,total_sterilized,total_unsterilized,health_notes,source_label,source_url,photo_url,created_by,colony_admin_id,created_at,admin_profile:profiles!colonies_colony_admin_id_fkey(username,email,avatar_url)")
+            .select("id,name,address,city,location_context,lat,lng,status,asl_declared,registry_number,health_last_updated,health_record_date,volunteer_name,volunteer_phone,volunteer_call_hours,total_males,sterilized_males,unsterilized_males,total_females,sterilized_females,unsterilized_females,total_sterilized,total_unsterilized,health_notes,source_label,source_url,photo_url,created_by,colony_admin_id,created_at,admin_profile:profiles!colonies_colony_admin_id_fkey(username,email,avatar_url),members:colony_members(role,profile:profiles(username,email,avatar_url))")
             .single();
           if (photoData) savedColony = photoData;
         }
@@ -914,13 +1029,14 @@ function App() {
           photo_url: photoUrl || null,
         })
         .eq("id", colonyId)
-        .select("id,name,address,city,location_context,lat,lng,status,asl_declared,registry_number,health_last_updated,health_record_date,volunteer_name,volunteer_phone,volunteer_call_hours,total_males,sterilized_males,unsterilized_males,total_females,sterilized_females,unsterilized_females,total_sterilized,total_unsterilized,health_notes,source_label,source_url,photo_url,created_by,colony_admin_id,created_at,admin_profile:profiles!colonies_colony_admin_id_fkey(username,email,avatar_url)")
+        .select("id,name,address,city,location_context,lat,lng,status,asl_declared,registry_number,health_last_updated,health_record_date,volunteer_name,volunteer_phone,volunteer_call_hours,total_males,sterilized_males,unsterilized_males,total_females,sterilized_females,unsterilized_females,total_sterilized,total_unsterilized,health_notes,source_label,source_url,photo_url,created_by,colony_admin_id,created_at,admin_profile:profiles!colonies_colony_admin_id_fkey(username,email,avatar_url),members:colony_members(role,profile:profiles(username,email,avatar_url))")
         .single();
 
       if (error) throw error;
 
       applyLocalUpdate(data);
       setDataStatus(`Colonia "${cleaned.name}" aggiornata su Supabase.`);
+      await trackChange(colonyId, "colony", colonyId, "update", `Scheda colonia aggiornata da ${currentUser.username}`);
       return true;
     } catch (error) {
       setDataStatus(`Errore modifica colonia: ${error.message}`);
@@ -1084,27 +1200,120 @@ function App() {
     );
   }
 
-  function approveParticipation(requestId) {
+  async function requestCollaboration(colonyId) {
+    if (!isAuthenticated) {
+      setAuthMode("login");
+      setRegisterOpen(true);
+      return false;
+    }
+    const colony = colonies.find((item) => item.id === colonyId);
+    if (!colony || colony.adminId === currentUser?.id || colony.collaborators?.includes(currentUser?.username)) return false;
+    const localRequest = {
+      id: `local-${Date.now()}`,
+      colonyId,
+      profileId: currentUser.id,
+      user: currentUser.username,
+      message: "Richiesta di collaborazione",
+      status: "In attesa",
+    };
+    setParticipationRequests((items) => [localRequest, ...items]);
+
+    const supabase = await getSupabaseClient();
+    if (!supabase || !currentUser?.id) return true;
+
+    const { data, error } = await supabase
+      .from("participation_requests")
+      .insert({
+        colony_id: colonyId,
+        profile_id: currentUser.id,
+        message: "Vorrei collaborare alla gestione della colonia.",
+        status: "pending",
+      })
+      .select("id,colony_id,profile_id,message,status,created_at,profile:profiles(username)")
+      .single();
+
+    if (error) {
+      setDataStatus(`Errore richiesta collaborazione: ${error.message}`);
+      return false;
+    }
+
+    setParticipationRequests((items) => [
+      {
+        id: data.id,
+        colonyId: data.colony_id,
+        profileId: data.profile_id,
+        user: data.profile?.username ?? currentUser.username,
+        message: data.message ?? "",
+        status: mapRequestStatus(data.status),
+      },
+      ...items.filter((item) => item.id !== localRequest.id),
+    ]);
+    await notifyProfile(colony.adminId, "collaboration_request", "Richiesta collaborazione", `${currentUser.username} vuole collaborare a ${colony.name}`);
+    return true;
+  }
+
+  async function decideParticipation(requestId, nextStatus) {
     if (!canEditSelected) return;
     const request = participationRequests.find((item) => item.id === requestId);
     if (!request) return;
+    const approved = nextStatus === "approved";
 
-    setColonies((items) =>
-      items.map((item) =>
-        item.id === request.colonyId && !item.collaborators.includes(request.user)
-          ? {
-              ...item,
-              collaborators: [...item.collaborators, request.user],
-              updated: "adesso",
-            }
-          : item,
-      ),
-    );
+    if (approved) {
+      setColonies((items) =>
+        items.map((item) =>
+          item.id === request.colonyId && !item.collaborators.includes(request.user)
+            ? {
+                ...item,
+                collaborators: [...item.collaborators, request.user],
+                updated: "adesso",
+              }
+            : item,
+        ),
+      );
+    }
     setParticipationRequests((items) =>
       items.map((item) =>
-        item.id === requestId ? { ...item, status: "Approvata" } : item,
+        item.id === requestId ? { ...item, status: approved ? "Approvata" : "Rifiutata" } : item,
       ),
     );
+
+    const supabase = await getSupabaseClient();
+    if (supabase && currentUser?.id && !String(requestId).startsWith("local-")) {
+      const { error } = await supabase
+        .from("participation_requests")
+        .update({ status: nextStatus, decided_by: currentUser.id })
+        .eq("id", requestId);
+      if (error) {
+        setDataStatus(`Errore decisione collaborazione: ${error.message}`);
+        return;
+      }
+      if (approved) {
+        const { error: memberError } = await supabase.from("colony_members").upsert({
+          colony_id: request.colonyId,
+          profile_id: request.profileId,
+          role: "editor",
+          approved_by: currentUser.id,
+        });
+        if (memberError) setDataStatus(`Errore collaboratore: ${memberError.message}`);
+      }
+    }
+
+    const colony = colonies.find((item) => item.id === request.colonyId);
+    await notifyProfile(
+      request.profileId,
+      approved ? "collaboration_approved" : "collaboration_rejected",
+      approved ? "Collaborazione accettata" : "Collaborazione rifiutata",
+      `${colony?.name ?? "Colonia"}: richiesta ${approved ? "accettata" : "rifiutata"}`,
+    );
+    await trackChange(request.colonyId, "participation_request", requestId, nextStatus, `${request.user}: richiesta ${approved ? "accettata" : "rifiutata"}`);
+  }
+
+  function approveParticipation(requestId) {
+    return decideParticipation(requestId, "approved");
+  }
+
+  function rejectParticipation(requestId) {
+    return decideParticipation(requestId, "rejected");
   }
 
   function acceptFriend(requestId) {
@@ -1155,6 +1364,7 @@ function App() {
       created_by: currentUser.id,
     });
     if (error) setDataStatus(`Errore commento: ${error.message}`);
+    else await trackChange(selected.id, "comment", null, "create", `Commento aggiunto da ${currentUser.username}`);
   }
 
   async function saveMessage(body) {
@@ -1434,6 +1644,7 @@ function App() {
         cat.id === catId ? mappedCat : cat,
       ),
     }));
+    await trackChange(targetColony.id, "cat", savedCat.id, String(catId).startsWith("local-") ? "create" : "update", `Gatto ${mappedCat.name} salvato da ${currentUser.username}`);
     await notifyAdmins("new_cat", "Nuovo gatto", `${mappedCat.name} aggiunto a ${targetColony.name}`);
     return true;
   }
@@ -1507,6 +1718,7 @@ function App() {
       return false;
     }
     setReports((items) => [mapDbReports([data], colonies)[0], ...items.filter((item) => item.id !== report.id)]);
+    await trackChange(payload.colonyId, "report", data.id, "create", `${reportTypeLabel(report.type)}: ${report.title}`);
     if (report.type === "rescue") {
       await notifyAdmins("rescue_request", "Richiesta di soccorso", `${report.title} - ${report.colony}`);
     }
@@ -1556,6 +1768,8 @@ function App() {
             onToggleAsl={toggleAslDeclared}
             onReplaceAdmin={replaceColonyAdmin}
             onApproveParticipation={approveParticipation}
+            onRejectParticipation={rejectParticipation}
+            onRequestCollaboration={requestCollaboration}
             onAcceptFriend={acceptFriend}
             onSendMessage={sendMessage}
             isAuthenticated={isAuthenticated}
@@ -1568,6 +1782,7 @@ function App() {
             cats={visibleCats}
             onSaveCat={saveCat}
             helpReports={helpReports}
+            changeLog={changeLog}
             reports={reports}
             onCreateHelpRequest={createHelpRequest}
           />
@@ -1593,10 +1808,13 @@ function App() {
             onToggleAsl={toggleAslDeclared}
             onReplaceAdmin={replaceColonyAdmin}
             onApproveParticipation={approveParticipation}
+            onRejectParticipation={rejectParticipation}
+            onRequestCollaboration={requestCollaboration}
             onUpdateColony={updateColony}
             cats={visibleCats}
             onSaveCat={saveCat}
             helpReports={helpReports}
+            changeLog={changeLog}
             onCreateHelpRequest={createHelpRequest}
             comments={comments}
             draft={draft}
@@ -1611,6 +1829,7 @@ function App() {
             canEdit={canEditSelected}
             onSaveCat={saveCat}
             onCreateCat={createCatForColony}
+            defaultColonyId={defaultColonyId}
           />
         )}
         {activeSection === "Segnalazioni" && (
@@ -1619,6 +1838,7 @@ function App() {
             reports={reports}
             canEdit={canEditSelected}
             selected={selected}
+            defaultColonyId={defaultColonyId}
             onCreateHelpRequest={createHelpRequest}
             isAuthenticated={isAuthenticated}
             onRequireAuth={() => {
@@ -1648,6 +1868,7 @@ function App() {
             friendRequests={friendRequests}
             forumThreads={forumThreads}
             onApproveParticipation={approveParticipation}
+            onRejectParticipation={rejectParticipation}
             onAcceptFriend={acceptFriend}
             onRequestFriend={requestFriend}
             onCreateForumThread={createForumThread}
@@ -1808,6 +2029,8 @@ function MapSection({
   onToggleAsl,
   onReplaceAdmin,
   onApproveParticipation,
+  onRejectParticipation,
+  onRequestCollaboration,
   onAcceptFriend,
   onSendMessage,
   isAuthenticated,
@@ -1817,6 +2040,7 @@ function MapSection({
   cats,
   onSaveCat,
   helpReports,
+  changeLog,
   reports,
   onCreateHelpRequest,
 }) {
@@ -1853,6 +2077,8 @@ function MapSection({
         onToggleAsl={onToggleAsl}
         onReplaceAdmin={onReplaceAdmin}
         onApproveParticipation={onApproveParticipation}
+        onRejectParticipation={onRejectParticipation}
+        onRequestCollaboration={onRequestCollaboration}
         onAcceptFriend={onAcceptFriend}
         onSendMessage={onSendMessage}
         isAuthenticated={isAuthenticated}
@@ -1862,6 +2088,7 @@ function MapSection({
         cats={cats}
         onSaveCat={onSaveCat}
         helpReports={helpReports}
+        changeLog={changeLog}
         onCreateHelpRequest={onCreateHelpRequest}
       />
     </div>
@@ -1988,6 +2215,7 @@ function reportTypeLabel(type) {
   if (type === "rescue") return "Soccorso";
   if (type === "birth") return "Cucciolata";
   if (type === "problem") return "Problema";
+  if (type === "adoption_request") return "Richiesta di adozione";
   return "Avvistamento";
 }
 
@@ -1995,10 +2223,13 @@ function DetailPanel({
   selected,
   isAuthenticated,
   onRequireAuth,
+  onRequestCollaboration,
   cats,
   helpReports,
+  changeLog = [],
 }) {
   const openHelp = helpReports.filter((report) => report.colonyId === selected.id).slice(0, 2);
+  const collaboratorCount = selected.collaborators?.length ?? 0;
 
   return (
     <aside className="detail-panel compact-detail">
@@ -2019,8 +2250,15 @@ function DetailPanel({
         <Fact icon={Cat} label="Gatti" value={selected.cats} />
         <Fact icon={PawPrint} label="Cucciolate" value={selected.kittens} />
         <Fact icon={ShieldCheck} label="ASL" value={selected.aslDeclared ? "Sì" : "No"} />
-        <Fact icon={Users} label="Admin" value={selected.admin} />
+        <Fact icon={Users} label="Responsabile" value={selected.responsible ?? selected.admin} />
+        <Fact icon={HeartHandshake} label="Collaboratori" value={collaboratorCount} />
       </div>
+      {isAuthenticated && (
+        <button className="full-width-action" onClick={() => onRequestCollaboration(selected.id)}>
+          <HeartHandshake size={16} />
+          Richiedi collaborazione
+        </button>
+      )}
       <section className="mini-panel">
         <div className="section-title compact">
           <h2>Richieste di aiuto</h2>
@@ -2028,7 +2266,7 @@ function DetailPanel({
         {openHelp.length ? (
           openHelp.map((report) => (
             <article className={`report-card ${report.tone}`} key={report.id}>
-              <span>{report.type === "rescue" ? "Soccorso" : "Problema"}</span>
+              <span>{reportTypeLabel(report.type)}</span>
               <strong>{report.title}</strong>
             </article>
           ))
@@ -2042,6 +2280,23 @@ function DetailPanel({
           <span>{cats.length || selected.cats}</span>
         </div>
         <MediaStrip photos={selected.photos.slice(0, 3)} title="Foto" />
+      </section>
+      <section className="mini-panel">
+        <div className="section-title compact">
+          <h2>Ultime modifiche</h2>
+        </div>
+        {changeLog.length ? (
+          <div className="activity-list">
+            {changeLog.slice(0, 4).map((change) => (
+              <article key={change.id}>
+                <strong>{change.summary}</strong>
+                <small>{change.actor} · {change.time}</small>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p className="empty-copy">Nessuna modifica recente.</p>
+        )}
       </section>
       {!isAuthenticated && <PublicReadOnlyNotice onRequireAuth={onRequireAuth} />}
     </aside>
@@ -2291,6 +2546,7 @@ function HelpFeed({ reports = [], selected, canEdit, onCreateHelpRequest }) {
             <select value={draft.type} onChange={updateField("type")}>
               <option value="rescue">Soccorso</option>
               <option value="problem">Problema</option>
+              <option value="adoption_request">Richiesta di adozione</option>
             </select>
           </label>
           <label>
@@ -2307,7 +2563,7 @@ function HelpFeed({ reports = [], selected, canEdit, onCreateHelpRequest }) {
       {reports.length ? (
         reports.slice(0, 4).map((report) => (
           <article className={`report-card ${report.tone}`} key={report.id}>
-            <span>{report.type === "rescue" ? "Soccorso" : "Problema"}</span>
+            <span>{reportTypeLabel(report.type)}</span>
             <strong>{report.title}</strong>
             {report.description && <small>{report.description}</small>}
           </article>
@@ -2484,6 +2740,7 @@ function AdminPanel({
   onToggleAsl,
   onReplaceAdmin,
   onApproveParticipation,
+  onRejectParticipation,
 }) {
   const colonyAdminUser = seedUsers.find((user) => user.username === selected.admin);
   const candidateAdmins = [
@@ -2501,7 +2758,7 @@ function AdminPanel({
           <strong>site_admin</strong>
         </article>
         <article>
-          <span>Amministratore colonia</span>
+          <span>Responsabile colonia</span>
           <div className="admin-identity">
             {colonyAdminUser?.avatar && (
               <PhotoImage photo={colonyAdminUser.avatar} alt={`Avatar ${selected.admin}`} />
@@ -2511,7 +2768,7 @@ function AdminPanel({
           {colonyAdminUser?.email && <small>{colonyAdminUser.email}</small>}
         </article>
         <label className="admin-select">
-          Sostituisci amministratore
+          Sostituisci responsabile
           <select value={selected.admin} onChange={(event) => onReplaceAdmin(event.target.value)}>
             {candidateAdmins.map((name) => (
               <option key={name} value={name}>
@@ -2529,7 +2786,7 @@ function AdminPanel({
           <span>Dichiarata all'ASL</span>
         </label>
         <article className="collaborator-card">
-          <span>Utenti autorizzati a editare</span>
+          <span>Collaboratori autorizzati a editare</span>
           <div className="collaborators">
             {selected.collaborators.length ? (
               selected.collaborators.map((name) => <em key={name}>{name}</em>)
@@ -2540,7 +2797,7 @@ function AdminPanel({
         </article>
       </div>
       <div className="request-list">
-        <h3>Richieste di partecipazione</h3>
+        <h3>Richieste di collaborazione</h3>
         {participationRequests.map((request) => (
           <article key={request.id} className="request-row">
             <div>
@@ -2548,14 +2805,23 @@ function AdminPanel({
               <p>{request.message}</p>
               <small>{request.status}</small>
             </div>
-            <button
-              disabled={request.status === "Approvata"}
-              onClick={() => onApproveParticipation(request.id)}
-            >
-              {request.status === "Approvata" ? "Approvata" : "Approva"}
-            </button>
+            <div className="row-actions">
+              <button
+                disabled={request.status !== "In attesa"}
+                onClick={() => onApproveParticipation(request.id)}
+              >
+                Accetta
+              </button>
+              <button
+                disabled={request.status !== "In attesa"}
+                onClick={() => onRejectParticipation(request.id)}
+              >
+                Rifiuta
+              </button>
+            </div>
           </article>
         ))}
+        {!participationRequests.length && <p className="empty-copy">Nessuna richiesta in attesa.</p>}
       </div>
     </section>
   );
@@ -2687,10 +2953,13 @@ function ColoniesSection({
   onToggleAsl,
   onReplaceAdmin,
   onApproveParticipation,
+  onRejectParticipation,
+  onRequestCollaboration,
   onUpdateColony,
   cats,
   onSaveCat,
   helpReports,
+  changeLog,
   onCreateHelpRequest,
   comments,
   draft,
@@ -2940,7 +3209,7 @@ function ColoniesSection({
       <div className="table-panel">
         <div className="table-row head">
           <span>Colonia</span>
-          <span>Amministratore</span>
+          <span>Responsabile</span>
           <span>ASL</span>
           <span>Gatti</span>
           <span>Azione</span>
@@ -2971,10 +3240,13 @@ function ColoniesSection({
         onToggleAsl={onToggleAsl}
         onReplaceAdmin={onReplaceAdmin}
         onApproveParticipation={onApproveParticipation}
+        onRejectParticipation={onRejectParticipation}
+        onRequestCollaboration={onRequestCollaboration}
         onUpdateColony={onUpdateColony}
         cats={cats}
         onSaveCat={onSaveCat}
         helpReports={helpReports}
+        changeLog={changeLog}
         onCreateHelpRequest={onCreateHelpRequest}
         comments={comments}
         draft={draft}
@@ -2994,10 +3266,13 @@ function ColonyFullPanel({
   onToggleAsl,
   onReplaceAdmin,
   onApproveParticipation,
+  onRejectParticipation,
+  onRequestCollaboration,
   onUpdateColony,
   cats,
   onSaveCat,
   helpReports,
+  changeLog,
   onCreateHelpRequest,
   comments,
   draft,
@@ -3023,8 +3298,9 @@ function ColonyFullPanel({
         <button className="status-button">{selected.status}</button>
       </div>
       <div className="facts">
-        <Fact icon={ShieldCheck} label="Amministratore colonia" value={selected.admin} />
+        <Fact icon={ShieldCheck} label="Responsabile colonia" value={selected.responsible ?? selected.admin} />
         <Fact icon={Users} label="Referente" value={selected.caretaker} />
+        <Fact icon={HeartHandshake} label="Collaboratori" value={selected.collaborators?.length ?? 0} />
         <Fact icon={Clock3} label="Ultimo aggiornamento" value={selected.updated} />
         <Fact icon={Cat} label="Gatti censiti" value={selected.cats} />
         <Fact icon={PawPrint} label="Cucciolate (2026)" value={selected.kittens} />
@@ -3052,6 +3328,7 @@ function ColonyFullPanel({
           onToggleAsl={onToggleAsl}
           onReplaceAdmin={onReplaceAdmin}
           onApproveParticipation={onApproveParticipation}
+          onRejectParticipation={onRejectParticipation}
         />
       )}
       {activeTab === "Sanitario" && <SanitaryPanel selected={selected} />}
@@ -3087,6 +3364,12 @@ function ColonyFullPanel({
       {activeTab === "Discussione" && (
         <>
           <HelpFeed reports={helpReports} selected={selected} canEdit={canEdit} onCreateHelpRequest={onCreateHelpRequest} />
+          {isAuthenticated && !canEdit && (
+            <button className="full-width-action" onClick={() => onRequestCollaboration(selected.id)}>
+              <HeartHandshake size={16} />
+              Richiedi collaborazione
+            </button>
+          )}
           <ColonyDiscussionPanel
             isAuthenticated={isAuthenticated}
             comments={comments}
@@ -3094,6 +3377,7 @@ function ColonyFullPanel({
             setDraft={setDraft}
             addComment={addComment}
           />
+          <ChangeLogPanel changes={changeLog} />
         </>
       )}
     </section>
@@ -3141,9 +3425,29 @@ function ColonyDiscussionPanel({
   );
 }
 
-function CatCreatePanel({ colonies, onCreateCat, onDone }) {
+function ChangeLogPanel({ changes = [] }) {
+  return (
+    <section className="comments colony-discussion">
+      <h2>Registro modifiche</h2>
+      {changes.length ? (
+        <div className="activity-list">
+          {changes.map((change) => (
+            <article key={change.id}>
+              <strong>{change.summary}</strong>
+              <small>{change.actor} · {change.time}</small>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="empty-copy">Nessuna modifica tracciata.</p>
+      )}
+    </section>
+  );
+}
+
+function CatCreatePanel({ colonies, onCreateCat, onDone, defaultColonyId }) {
   const [draft, setDraft] = useState({
-    colonyId: colonies[0]?.id ?? "",
+    colonyId: defaultColonyId ?? colonies[0]?.id ?? "",
     name: "",
     sex: "",
     status: "Da verificare",
@@ -3158,6 +3462,10 @@ function CatCreatePanel({ colonies, onCreateCat, onDone }) {
     photoPreview: "",
   });
   const [status, setStatus] = useState("");
+
+  useEffect(() => {
+    if (defaultColonyId) setDraft((current) => ({ ...current, colonyId: current.colonyId || defaultColonyId }));
+  }, [defaultColonyId]);
 
   const updateField = (field) => (event) => {
     const { type, checked, value } = event.target;
@@ -3242,7 +3550,7 @@ function CatCreatePanel({ colonies, onCreateCat, onDone }) {
   );
 }
 
-function CatsSection({ colonies, catsByColony, canEdit, onSaveCat, onCreateCat }) {
+function CatsSection({ colonies, catsByColony, canEdit, onSaveCat, onCreateCat, defaultColonyId }) {
   const registryCats = colonies.flatMap((colony) =>
     (catsByColony[colony.id] ?? []).map((cat, index) => ({
       ...cat,
@@ -3267,6 +3575,7 @@ function CatsSection({ colonies, catsByColony, canEdit, onSaveCat, onCreateCat }
           colonies={colonies}
           onCreateCat={onCreateCat}
           onDone={() => setCreating(false)}
+          defaultColonyId={defaultColonyId}
         />
       )}
       <div className="registry-grid">
@@ -3289,7 +3598,7 @@ function CatsSection({ colonies, catsByColony, canEdit, onSaveCat, onCreateCat }
   );
 }
 
-function ReportsSection({ colonies, reports, canEdit, selected, onCreateHelpRequest, isAuthenticated, onRequireAuth }) {
+function ReportsSection({ colonies, reports, canEdit, selected, defaultColonyId, onCreateHelpRequest, isAuthenticated, onRequireAuth }) {
   const columns = [
     ["open", "Aperta"],
     ["checking", "Da verificare"],
@@ -3297,14 +3606,14 @@ function ReportsSection({ colonies, reports, canEdit, selected, onCreateHelpRequ
   ];
   const [isCreating, setCreating] = useState(false);
   const [draft, setDraft] = useState({
-    colonyId: selected.id,
+    colonyId: defaultColonyId ?? selected.id,
     type: "sighting",
     title: "",
     description: "",
   });
   useEffect(() => {
-    setDraft((current) => ({ ...current, colonyId: selected.id }));
-  }, [selected.id]);
+    setDraft((current) => ({ ...current, colonyId: defaultColonyId ?? selected.id }));
+  }, [defaultColonyId, selected.id]);
 
   const updateField = (field) => (event) =>
     setDraft((current) => ({ ...current, [field]: event.target.value }));
@@ -3313,7 +3622,7 @@ function ReportsSection({ colonies, reports, canEdit, selected, onCreateHelpRequ
     event.preventDefault();
     const created = await onCreateHelpRequest(draft);
     if (!created) return;
-    setDraft({ colonyId: selected.id, type: "sighting", title: "", description: "" });
+    setDraft({ colonyId: defaultColonyId ?? selected.id, type: "sighting", title: "", description: "" });
     setCreating(false);
   }
 
@@ -3341,6 +3650,7 @@ function ReportsSection({ colonies, reports, canEdit, selected, onCreateHelpRequ
               <option value="birth">Cucciolata</option>
               <option value="problem">Problema</option>
               <option value="rescue">Soccorso</option>
+              <option value="adoption_request">Richiesta di adozione</option>
             </select>
           </label>
           <label>
@@ -3438,6 +3748,7 @@ function CommunitySection({
   friendRequests,
   forumThreads,
   onApproveParticipation,
+  onRejectParticipation,
   onAcceptFriend,
   onRequestFriend,
   onCreateForumThread,
@@ -3482,7 +3793,7 @@ function CommunitySection({
         </div>
       </div>
       <div className="table-panel">
-        <h2>Richieste di partecipazione colonie</h2>
+        <h2>Richieste di collaborazione colonie</h2>
         {participationRequests.map((request) => {
           const colony = colonies.find((item) => item.id === request.colonyId);
           return (
@@ -3490,18 +3801,20 @@ function CommunitySection({
               <div>
                 <strong>{request.user}</strong>
                 <p>{request.message}</p>
-                <small>{colony?.name ?? "Colonia non trovata"} ? {request.status}</small>
+                <small>{colony?.name ?? "Colonia non trovata"} · {request.status}</small>
               </div>
-              <button
-                disabled={request.status === "Approvata"}
-                onClick={() => onApproveParticipation(request.id)}
-              >
-                {request.status === "Approvata" ? "Approvata" : "Approva"}
-              </button>
+              <div className="row-actions">
+                <button disabled={request.status !== "In attesa"} onClick={() => onApproveParticipation(request.id)}>
+                  Accetta
+                </button>
+                <button disabled={request.status !== "In attesa"} onClick={() => onRejectParticipation(request.id)}>
+                  Rifiuta
+                </button>
+              </div>
             </article>
           );
         })}
-        {!participationRequests.length && <p className="empty-copy padded">Nessuna richiesta di partecipazione.</p>}
+        {!participationRequests.length && <p className="empty-copy padded">Nessuna richiesta di collaborazione.</p>}
       </div>
     </section>
   );

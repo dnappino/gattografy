@@ -4,7 +4,7 @@ create type public.app_role as enum ('user', 'verified_volunteer', 'moderator', 
 create type public.colony_member_role as enum ('colony_admin', 'editor');
 create type public.request_status as enum ('pending', 'approved', 'rejected');
 create type public.report_status as enum ('open', 'checking', 'in_progress', 'closed');
-create type public.report_type as enum ('sighting', 'birth', 'problem', 'rescue');
+create type public.report_type as enum ('sighting', 'birth', 'problem', 'rescue', 'adoption_request');
 
 create table public.profiles (
   id uuid primary key,
@@ -197,6 +197,17 @@ create table public.notifications (
   created_at timestamptz not null default now()
 );
 
+create table public.change_log (
+  id uuid primary key default gen_random_uuid(),
+  colony_id uuid references public.colonies(id) on delete cascade,
+  entity_type text not null,
+  entity_id text,
+  action text not null,
+  summary text not null,
+  actor_id uuid references public.profiles(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
 create or replace function public.is_site_admin()
 returns boolean
 language sql
@@ -245,6 +256,7 @@ alter table public.messages enable row level security;
 alter table public.forum_threads enable row level security;
 alter table public.forum_posts enable row level security;
 alter table public.notifications enable row level security;
+alter table public.change_log enable row level security;
 
 create policy "profiles are readable by authenticated users"
 on public.profiles for select
@@ -285,7 +297,7 @@ using (public.is_site_admin());
 
 create policy "colony members are readable"
 on public.colony_members for select
-to authenticated
+to anon, authenticated
 using (true);
 
 create policy "site admin or colony admin manages members"
@@ -323,6 +335,47 @@ on public.friend_requests for update
 to authenticated
 using (to_profile_id = auth.uid() or public.is_site_admin())
 with check (to_profile_id = auth.uid() or public.is_site_admin());
+
+create policy "participation requests visible to requester or colony responsible"
+on public.participation_requests for select
+to authenticated
+using (
+  profile_id = auth.uid()
+  or public.is_site_admin()
+  or exists (
+    select 1
+    from public.colonies
+    where colonies.id = participation_requests.colony_id
+      and colonies.colony_admin_id = auth.uid()
+  )
+);
+
+create policy "users request colony collaboration"
+on public.participation_requests for insert
+to authenticated
+with check (profile_id = auth.uid());
+
+create policy "responsible decides collaboration requests"
+on public.participation_requests for update
+to authenticated
+using (
+  public.is_site_admin()
+  or exists (
+    select 1
+    from public.colonies
+    where colonies.id = participation_requests.colony_id
+      and colonies.colony_admin_id = auth.uid()
+  )
+)
+with check (
+  public.is_site_admin()
+  or exists (
+    select 1
+    from public.colonies
+    where colonies.id = participation_requests.colony_id
+      and colonies.colony_admin_id = auth.uid()
+  )
+);
 
 create policy "cats are public"
 on public.cats for select
@@ -422,3 +475,13 @@ on public.notifications for update
 to authenticated
 using (recipient_id = auth.uid())
 with check (recipient_id = auth.uid());
+
+create policy "change log readable by authenticated users"
+on public.change_log for select
+to authenticated
+using (true);
+
+create policy "authenticated users create change log"
+on public.change_log for insert
+to authenticated
+with check (actor_id = auth.uid() or public.is_site_admin());
