@@ -1072,11 +1072,104 @@ select {
 }
 
 .admin-panel,
+.auth-notice,
+.edit-panel,
+.help-feed,
 .social-panel {
   padding: 14px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: #fbfdfc;
+}
+
+.auth-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.auth-notice.large {
+  margin-top: 0;
+}
+
+.auth-notice button {
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 7px;
+  background: var(--green);
+  color: #fff;
+  font-weight: 800;
+}
+
+.edit-panel,
+.help-feed {
+  margin-top: 18px;
+}
+
+.edit-grid,
+.inline-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.edit-grid label,
+.inline-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 780;
+}
+
+.edit-grid input,
+.edit-grid select,
+.edit-grid textarea,
+.inline-form input,
+.inline-form select,
+.inline-form textarea {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 8px 10px;
+  color: var(--ink);
+  background: #fff;
+}
+
+.edit-grid textarea,
+.inline-form textarea {
+  min-height: 74px;
+  resize: vertical;
+}
+
+.wide-field {
+  grid-column: 1 / -1;
+}
+
+.edit-grid .inline-check,
+.inline-form .inline-check {
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  align-content: center;
+}
+
+.edit-grid .inline-check input {
+  min-height: 18px;
+  accent-color: var(--green);
+}
+
+.edit-panel > .primary,
+.inline-form > .primary {
+  margin-top: 10px;
+}
+
+.empty-copy {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.88rem;
 }
 
 .sanitary-panel {

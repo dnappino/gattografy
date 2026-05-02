@@ -285,9 +285,9 @@ to authenticated
 using (public.can_edit_colony(colony_id))
 with check (public.can_edit_colony(colony_id));
 
-create policy "reports are readable"
+create policy "reports are publicly readable"
 on public.reports for select
-to authenticated
+to anon, authenticated
 using (true);
 
 create policy "authenticated users can create reports"

@@ -145,62 +145,11 @@ const cats = [
 
 const seedUsers = [
   {
-    username: "Sara",
-    email: "sara@gattografy.test",
-    avatar: catFive,
-    role: "amministratrice sito",
-    passwordPolicy: "utente demo locale",
-  },
-  {
     username: "ilaria_nappino",
     email: "ilynap@gmail.com",
     avatar: catThree,
     role: "amministratrice colonia",
     passwordPolicy: "password da impostare nel backend, non salvata nel frontend",
-  },
-];
-
-const seedParticipationRequests = [
-  {
-    id: 1,
-    colonyId: 1,
-    user: "Giulia N.",
-    message: "Vorrei aiutare ad aggiornare foto e avvistamenti del sabato.",
-    status: "In attesa",
-  },
-  {
-    id: 2,
-    colonyId: 1,
-    user: "Dario P.",
-    message: "Sono vicino alla zona e posso controllare le ciotole.",
-    status: "In attesa",
-  },
-  {
-    id: 3,
-    colonyId: 3,
-    user: "Sara",
-    message: "Posso dare una mano con il censimento dei nuovi arrivi.",
-    status: "In attesa",
-  },
-];
-
-const seedFriendRequests = [
-  { id: 1, user: "Giulia N.", note: "Volontaria zona nord", accepted: false },
-  { id: 2, user: "Dario P.", note: "Disponibile per recuperi serali", accepted: false },
-];
-
-const seedMessages = [
-  {
-    id: 1,
-    from: "Laura B.",
-    text: "Ho caricato le foto nuove della colonia. Possiamo verificare il gatto rosso?",
-    time: "09:24",
-  },
-  {
-    id: 2,
-    from: "Sara",
-    text: "Si, preparo una segnalazione e controllo se è già in un'altra colonia.",
-    time: "09:31",
   },
 ];
 
@@ -249,13 +198,18 @@ function MapFlyTo({ selected }) {
 
 function mapDbColony(row, index = 0) {
   const city = row.city ? ` - ${row.city}` : "";
+  const adminProfile = row.admin_profile ?? row.profiles ?? null;
 
   return {
     id: row.id,
     name: row.name,
+    address: row.address,
+    city: row.city,
     zone: `${row.address}${city}`,
-    caretaker: row.admin_username ?? "Amministratore colonia",
-    admin: row.admin_username ?? "Amministratore colonia",
+    caretaker: adminProfile?.username ?? "admin_default",
+    admin: adminProfile?.username ?? "admin_default",
+    adminId: row.colony_admin_id,
+    createdBy: row.created_by,
     collaborators: [],
     aslDeclared: row.asl_declared,
     status: row.status,
@@ -286,8 +240,58 @@ function mapDbColony(row, index = 0) {
   };
 }
 
+function mapDbReports(rows, colonyList) {
+  return rows.map((row) => {
+    const colony = colonyList.find((item) => item.id === row.colony_id);
+    return {
+      id: row.id,
+      colonyId: row.colony_id,
+      colony: colony?.name ?? "Colonia",
+      type: row.type,
+      status: row.status,
+      title: row.title,
+      description: row.description ?? "",
+      createdAt: row.created_at,
+      tone: row.type === "rescue" ? "red" : row.type === "birth" ? "orange" : "blue",
+    };
+  });
+}
+
+function mapDbCat(row) {
+  return {
+    id: row.id,
+    colonyId: row.colony_id,
+    name: row.name,
+    sex: row.sex ?? "",
+    status: row.status ?? "",
+    notes: row.notes ?? "",
+    sterilized: row.sterilized,
+    sterilizationDate: row.sterilization_date ?? "",
+    sterilizationYear: row.sterilization_year ?? "",
+    earTip: Boolean(row.ear_tip),
+    provenance: row.provenance ?? "",
+    alreadyPresent: row.already_present,
+    description: row.description ?? "",
+    approximateBirthDate: row.approximate_birth_date ?? "",
+    removalReason: row.removal_reason ?? "",
+    removedAt: row.removed_at ?? "",
+    photo: catPhotos[0],
+  };
+}
+
+function mapRequestStatus(status) {
+  if (status === "approved") return "Approvata";
+  if (status === "rejected") return "Rifiutata";
+  return "In attesa";
+}
+
+function formatDate(value) {
+  if (!value) return "";
+  return new Intl.DateTimeFormat("it-IT", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+}
+
 function App() {
-  const [currentUser, setCurrentUser] = useState(seedUsers[0]);
+  const [currentUser, setCurrentUser] = useState(null);
   const [authMode, setAuthMode] = useState("register");
   const [authForm, setAuthForm] = useState({
     username: "ilaria_nappino",
@@ -301,19 +305,30 @@ function App() {
   const [isDataBusy, setDataBusy] = useState(false);
   const [selectedId, setSelectedId] = useState(6);
   const [activeSection, setActiveSection] = useState("Mappa");
-  const [isRegisterOpen, setRegisterOpen] = useState(true);
-  const [comments, setComments] = useState([
-    "Avvistati 2 nuovi gatti nella zona nord della colonia. Sto verificando se sono già censiti.",
-  ]);
+  const [isRegisterOpen, setRegisterOpen] = useState(false);
+  const [comments, setComments] = useState([]);
   const [draft, setDraft] = useState("");
-  const [participationRequests, setParticipationRequests] = useState(seedParticipationRequests);
-  const [friendRequests, setFriendRequests] = useState(seedFriendRequests);
-  const [messages, setMessages] = useState(seedMessages);
+  const [reports, setReports] = useState([]);
+  const [catsByColony, setCatsByColony] = useState({});
+  const [participationRequests, setParticipationRequests] = useState([]);
+  const [friendRequests, setFriendRequests] = useState([]);
+  const [messages, setMessages] = useState([]);
   const [messageDraft, setMessageDraft] = useState("");
   const selected = useMemo(
     () => colonies.find((colony) => colony.id === selectedId) ?? colonies[0],
     [colonies, selectedId],
   );
+  const isAuthenticated = Boolean(currentUser?.id || currentUser?.isDemoAuthenticated);
+  const isSiteAdmin = currentUser?.role === "site_admin" || currentUser?.role === "amministratrice sito";
+  const canEditSelected =
+    isAuthenticated &&
+    (isSiteAdmin ||
+      selected.adminId === currentUser?.id ||
+      selected.createdBy === currentUser?.id ||
+      selected.admin === currentUser?.username ||
+      selected.collaborators?.includes(currentUser?.username));
+  const visibleCats = catsByColony[selected?.id] ?? [];
+  const helpReports = reports.filter((report) => report.type === "rescue" || report.type === "problem");
 
   useEffect(() => {
     let unsubscribe = null;
@@ -338,7 +353,9 @@ function App() {
           hydrateSupabaseUser(session.user);
           setRegisterOpen(false);
         } else {
-          setCurrentUser(seedUsers[0]);
+          setCurrentUser(null);
+          setFriendRequests([]);
+          setMessages([]);
         }
       });
       unsubscribe = listener.subscription.unsubscribe;
@@ -347,6 +364,11 @@ function App() {
     loadSession();
     return () => unsubscribe?.();
   }, []);
+
+  useEffect(() => {
+    if (!selected?.id) return;
+    loadColonyActivity(selected.id);
+  }, [selected?.id, isAuthenticated]);
 
   async function hydrateSupabaseUser(user) {
     const supabase = await getSupabaseClient();
@@ -377,7 +399,7 @@ function App() {
     try {
       const { data, error } = await supabase
         .from("colonies")
-        .select("id,name,address,city,location_context,lat,lng,status,asl_declared,registry_number,health_last_updated,health_record_date,volunteer_name,volunteer_phone,volunteer_call_hours,total_males,sterilized_males,unsterilized_males,total_females,sterilized_females,unsterilized_females,total_sterilized,total_unsterilized,health_notes,source_label,source_url,created_at")
+        .select("id,name,address,city,location_context,lat,lng,status,asl_declared,registry_number,health_last_updated,health_record_date,volunteer_name,volunteer_phone,volunteer_call_hours,total_males,sterilized_males,unsterilized_males,total_females,sterilized_females,unsterilized_females,total_sterilized,total_unsterilized,health_notes,source_label,source_url,created_by,colony_admin_id,created_at,admin_profile:profiles!colonies_colony_admin_id_fkey(username,email,avatar_url)")
         .order("created_at", { ascending: false });
 
       if (error) throw error;
@@ -391,6 +413,13 @@ function App() {
       setColonies(mapped);
       setSelectedId(mapped[0].id);
       setDataStatus(`Caricate ${mapped.length} colonie da Supabase.`);
+
+      const { data: reportRows } = await supabase
+        .from("reports")
+        .select("id,colony_id,type,status,title,description,created_at")
+        .order("created_at", { ascending: false })
+        .limit(40);
+      setReports(mapDbReports(reportRows ?? [], mapped));
     } catch (error) {
       setDataStatus(`Errore lettura Supabase: ${error.message}`);
     } finally {
@@ -398,7 +427,92 @@ function App() {
     }
   }
 
+  async function loadColonyActivity(colonyId) {
+    const supabase = await getSupabaseClient();
+    if (!supabase || !colonyId) return;
+
+    try {
+      const [{ data: reportRows, error: reportError }, { data: catRows, error: catError }] =
+        await Promise.all([
+          supabase
+            .from("reports")
+            .select("id,colony_id,type,status,title,description,created_at")
+            .eq("colony_id", colonyId)
+            .order("created_at", { ascending: false }),
+          supabase
+            .from("cats")
+            .select("id,colony_id,name,sex,status,notes,sterilized,sterilization_date,sterilization_year,ear_tip,provenance,already_present,description,approximate_birth_date,removal_reason,removed_at,created_at")
+            .eq("colony_id", colonyId)
+            .order("created_at", { ascending: false }),
+        ]);
+
+      if (reportError) throw reportError;
+      if (catError) throw catError;
+
+      setReports((items) => {
+        const otherColonies = items.filter((item) => item.colonyId !== colonyId);
+        return [
+          ...mapDbReports(reportRows ?? [], colonies),
+          ...otherColonies,
+        ];
+      });
+      setCatsByColony((items) => ({
+        ...items,
+        [colonyId]: (catRows ?? []).map(mapDbCat),
+      }));
+    } catch (error) {
+      setDataStatus(`Errore lettura attività colonia: ${error.message}`);
+    }
+
+    if (!isAuthenticated) return;
+
+    try {
+      const [{ data: commentRows }, { data: messageRows }, { data: requestRows }] =
+        await Promise.all([
+          supabase
+            .from("comments")
+            .select("id,body,created_at")
+            .eq("colony_id", colonyId)
+            .order("created_at", { ascending: false }),
+          supabase
+            .from("messages")
+            .select("id,body,created_at,sender_id")
+            .eq("colony_id", colonyId)
+            .order("created_at", { ascending: true }),
+          supabase
+            .from("participation_requests")
+            .select("id,colony_id,message,status,created_at,profile:profiles(username)")
+            .eq("colony_id", colonyId)
+            .order("created_at", { ascending: false }),
+        ]);
+
+      setComments((commentRows ?? []).map((row) => row.body));
+      setMessages((messageRows ?? []).map((row) => ({
+        id: row.id,
+        from: row.sender_id === currentUser?.id ? currentUser.username : "Utente",
+        text: row.body,
+        time: formatDate(row.created_at),
+      })));
+      setParticipationRequests((requestRows ?? []).map((row) => ({
+        id: row.id,
+        colonyId: row.colony_id,
+        user: row.profile?.username ?? "Utente",
+        message: row.message ?? "",
+        status: mapRequestStatus(row.status),
+      })));
+    } catch (error) {
+      setDataStatus(`Errore lettura social: ${error.message}`);
+    }
+  }
+
   async function createColony(newColony) {
+    if (!isAuthenticated) {
+      setAuthMode("login");
+      setRegisterOpen(true);
+      setDataStatus("Accedi per creare una colonia.");
+      return false;
+    }
+
     const parsedLat = Number(newColony.lat);
     const parsedLng = Number(newColony.lng);
     const colonyName = newColony.name.trim();
@@ -411,10 +525,12 @@ function App() {
     }
 
     const supabase = await getSupabaseClient();
-    if (!supabase || !currentUser.id) {
+    if (!supabase || !currentUser?.id) {
       const demoColony = {
         id: Date.now(),
         name: colonyName,
+        address,
+        city,
         zone: `${address} - ${city}`,
         caretaker: currentUser.username,
         admin: currentUser.username,
@@ -457,7 +573,7 @@ function App() {
           created_by: currentUser.id,
           colony_admin_id: currentUser.id,
         })
-        .select("id,name,address,city,location_context,lat,lng,status,asl_declared,registry_number,health_last_updated,health_record_date,volunteer_name,volunteer_phone,volunteer_call_hours,total_males,sterilized_males,unsterilized_males,total_females,sterilized_females,unsterilized_females,total_sterilized,total_unsterilized,health_notes,source_label,source_url,created_at")
+        .select("id,name,address,city,location_context,lat,lng,status,asl_declared,registry_number,health_last_updated,health_record_date,volunteer_name,volunteer_phone,volunteer_call_hours,total_males,sterilized_males,unsterilized_males,total_females,sterilized_females,unsterilized_females,total_sterilized,total_unsterilized,health_notes,source_label,source_url,created_by,colony_admin_id,created_at,admin_profile:profiles!colonies_colony_admin_id_fkey(username,email,avatar_url)")
         .single();
 
       if (error) throw error;
@@ -469,6 +585,110 @@ function App() {
       return true;
     } catch (error) {
       setDataStatus(`Errore creazione colonia: ${error.message}`);
+      return false;
+    } finally {
+      setDataBusy(false);
+    }
+  }
+
+  async function updateColony(colonyId, patch) {
+    if (!isAuthenticated || !canEditSelected) {
+      setAuthMode("login");
+      setRegisterOpen(true);
+      setDataStatus("Accedi con un utente autorizzato per modificare la colonia.");
+      return false;
+    }
+
+    const cleaned = {
+      ...patch,
+      name: patch.name?.trim(),
+      address: patch.address?.trim(),
+      city: patch.city?.trim(),
+      status: patch.status?.trim() || "Attiva",
+      lat: Number(patch.lat),
+      lng: Number(patch.lng),
+      totalMales: Number(patch.totalMales) || 0,
+      sterilizedMales: Number(patch.sterilizedMales) || 0,
+      unsterilizedMales: Number(patch.unsterilizedMales) || 0,
+      totalFemales: Number(patch.totalFemales) || 0,
+      sterilizedFemales: Number(patch.sterilizedFemales) || 0,
+      unsterilizedFemales: Number(patch.unsterilizedFemales) || 0,
+      totalSterilized: Number(patch.totalSterilized) || 0,
+      totalUnsterilized: Number(patch.totalUnsterilized) || 0,
+    };
+
+    if (!cleaned.name || !cleaned.address || !cleaned.city || Number.isNaN(cleaned.lat) || Number.isNaN(cleaned.lng)) {
+      setDataStatus("Nome, indirizzo, città, latitudine e longitudine sono obbligatori.");
+      return false;
+    }
+
+    const supabase = await getSupabaseClient();
+    const applyLocalUpdate = (row) => {
+      const mapped = mapDbColony(row);
+      setColonies((items) =>
+        items.map((item) =>
+          item.id === colonyId ? { ...item, ...mapped, photos: item.photos } : item,
+        ),
+      );
+    };
+
+    if (!supabase || currentUser?.isDemoAuthenticated) {
+      setColonies((items) =>
+        items.map((item) =>
+          item.id === colonyId
+            ? {
+                ...item,
+                ...cleaned,
+                zone: `${cleaned.address} - ${cleaned.city}`,
+                updated: "adesso",
+              }
+            : item,
+        ),
+      );
+      setDataStatus("Modifiche salvate nella demo locale.");
+      return true;
+    }
+
+    setDataBusy(true);
+    try {
+      const { data, error } = await supabase
+        .from("colonies")
+        .update({
+          name: cleaned.name,
+          address: cleaned.address,
+          city: cleaned.city,
+          location_context: cleaned.locationContext?.trim() || null,
+          lat: cleaned.lat,
+          lng: cleaned.lng,
+          status: cleaned.status,
+          asl_declared: Boolean(cleaned.aslDeclared),
+          registry_number: cleaned.registryNumber?.trim() || null,
+          health_last_updated: cleaned.healthLastUpdated || null,
+          health_record_date: cleaned.healthRecordDate || null,
+          volunteer_name: cleaned.volunteerName?.trim() || null,
+          volunteer_phone: cleaned.volunteerPhone?.trim() || null,
+          volunteer_call_hours: cleaned.volunteerCallHours?.trim() || null,
+          total_males: cleaned.totalMales,
+          sterilized_males: cleaned.sterilizedMales,
+          unsterilized_males: cleaned.unsterilizedMales,
+          total_females: cleaned.totalFemales,
+          sterilized_females: cleaned.sterilizedFemales,
+          unsterilized_females: cleaned.unsterilizedFemales,
+          total_sterilized: cleaned.totalSterilized,
+          total_unsterilized: cleaned.totalUnsterilized,
+          health_notes: cleaned.healthNotes?.trim() || null,
+        })
+        .eq("id", colonyId)
+        .select("id,name,address,city,location_context,lat,lng,status,asl_declared,registry_number,health_last_updated,health_record_date,volunteer_name,volunteer_phone,volunteer_call_hours,total_males,sterilized_males,unsterilized_males,total_females,sterilized_females,unsterilized_females,total_sterilized,total_unsterilized,health_notes,source_label,source_url,created_by,colony_admin_id,created_at,admin_profile:profiles!colonies_colony_admin_id_fkey(username,email,avatar_url)")
+        .single();
+
+      if (error) throw error;
+
+      applyLocalUpdate(data);
+      setDataStatus(`Colonia "${cleaned.name}" aggiornata su Supabase.`);
+      return true;
+    } catch (error) {
+      setDataStatus(`Errore modifica colonia: ${error.message}`);
       return false;
     } finally {
       setDataBusy(false);
@@ -496,6 +716,7 @@ function App() {
             avatar: catThree,
             role: "utente demo",
           };
+        demoUser.isDemoAuthenticated = true;
         setCurrentUser(demoUser);
         setRegisterOpen(false);
         setAuthStatus("Accesso demo completato. Configura Supabase per persistenza reale.");
@@ -533,13 +754,35 @@ function App() {
   async function signOut() {
     const supabase = await getSupabaseClient();
     if (supabase) await supabase.auth.signOut();
-    setCurrentUser(seedUsers[0]);
-    setRegisterOpen(true);
+    setCurrentUser(null);
+    setFriendRequests([]);
+    setMessages([]);
+    setRegisterOpen(false);
     setAuthMode("login");
     setAuthStatus("Sessione chiusa.");
   }
 
   function addCat() {
+    if (!canEditSelected) {
+      setAuthMode("login");
+      setRegisterOpen(true);
+      return;
+    }
+    const newCat = {
+      id: `local-${Date.now()}`,
+      colonyId: selected.id,
+      name: "Nuovo gatto",
+      sex: "",
+      status: "Da verificare",
+      notes: "",
+      sterilized: null,
+      earTip: false,
+      photo: catPhotos[0],
+    };
+    setCatsByColony((items) => ({
+      ...items,
+      [selected.id]: [newCat, ...(items[selected.id] ?? [])],
+    }));
     setColonies((items) =>
       items.map((item) =>
         item.id === selected.id
@@ -550,6 +793,11 @@ function App() {
   }
 
   function reportKitten() {
+    if (!canEditSelected) {
+      setAuthMode("login");
+      setRegisterOpen(true);
+      return;
+    }
     setColonies((items) =>
       items.map((item) =>
         item.id === selected.id
@@ -560,12 +808,18 @@ function App() {
   }
 
   function addComment() {
+    if (!isAuthenticated) {
+      setAuthMode("login");
+      setRegisterOpen(true);
+      return;
+    }
     if (!draft.trim()) return;
-    setComments((items) => [draft.trim(), ...items]);
+    saveComment(draft.trim());
     setDraft("");
   }
 
   function toggleAslDeclared() {
+    if (!canEditSelected) return;
     setColonies((items) =>
       items.map((item) =>
         item.id === selected.id
@@ -576,6 +830,7 @@ function App() {
   }
 
   function replaceColonyAdmin(nextAdmin) {
+    if (!canEditSelected) return;
     setColonies((items) =>
       items.map((item) =>
         item.id === selected.id
@@ -593,6 +848,7 @@ function App() {
   }
 
   function approveParticipation(requestId) {
+    if (!canEditSelected) return;
     const request = participationRequests.find((item) => item.id === requestId);
     if (!request) return;
 
@@ -615,6 +871,11 @@ function App() {
   }
 
   function acceptFriend(requestId) {
+    if (!isAuthenticated) {
+      setAuthMode("login");
+      setRegisterOpen(true);
+      return;
+    }
     setFriendRequests((items) =>
       items.map((item) =>
         item.id === requestId ? { ...item, accepted: true } : item,
@@ -623,17 +884,153 @@ function App() {
   }
 
   function sendMessage() {
+    if (!isAuthenticated) {
+      setAuthMode("login");
+      setRegisterOpen(true);
+      return;
+    }
     if (!messageDraft.trim()) return;
-    setMessages((items) => [
-      ...items,
-      {
-        id: Date.now(),
-        from: "Sara",
-        text: messageDraft.trim(),
-        time: "adesso",
-      },
-    ]);
+    saveMessage(messageDraft.trim());
     setMessageDraft("");
+  }
+
+  async function saveComment(body) {
+    setComments((items) => [body, ...items]);
+    const supabase = await getSupabaseClient();
+    if (!supabase || !currentUser?.id) return;
+
+    const { error } = await supabase.from("comments").insert({
+      colony_id: selected.id,
+      body,
+      created_by: currentUser.id,
+    });
+    if (error) setDataStatus(`Errore commento: ${error.message}`);
+  }
+
+  async function saveMessage(body) {
+    const localMessage = {
+      id: Date.now(),
+      from: currentUser?.username ?? "Utente",
+      text: body,
+      time: "adesso",
+    };
+    setMessages((items) => [...items, localMessage]);
+    const supabase = await getSupabaseClient();
+    if (!supabase || !currentUser?.id) return;
+
+    const { error } = await supabase.from("messages").insert({
+      colony_id: selected.id,
+      sender_id: currentUser.id,
+      body,
+    });
+    if (error) setDataStatus(`Errore messaggio: ${error.message}`);
+  }
+
+  async function saveCat(catId, patch) {
+    if (!canEditSelected) {
+      setAuthMode("login");
+      setRegisterOpen(true);
+      return false;
+    }
+
+    const cleaned = {
+      ...patch,
+      name: patch.name?.trim() || "Senza nome",
+    };
+
+    const localCat = { ...cleaned, id: catId, colonyId: selected.id };
+    setCatsByColony((items) => ({
+      ...items,
+      [selected.id]: (items[selected.id] ?? []).map((cat) =>
+        cat.id === catId ? { ...cat, ...localCat } : cat,
+      ),
+    }));
+
+    const supabase = await getSupabaseClient();
+    if (!supabase || !currentUser?.id) return true;
+
+    const payload = {
+      colony_id: selected.id,
+      name: cleaned.name,
+      sex: cleaned.sex || null,
+      status: cleaned.status || null,
+      notes: cleaned.notes || null,
+      sterilized: cleaned.sterilized === "" ? null : cleaned.sterilized,
+      sterilization_date: cleaned.sterilizationDate || null,
+      sterilization_year: cleaned.sterilizationYear ? Number(cleaned.sterilizationYear) : null,
+      ear_tip: Boolean(cleaned.earTip),
+      provenance: cleaned.provenance || null,
+      already_present: cleaned.alreadyPresent === "" ? null : cleaned.alreadyPresent,
+      description: cleaned.description || null,
+      approximate_birth_date: cleaned.approximateBirthDate || null,
+      removal_reason: cleaned.removalReason || null,
+      removed_at: cleaned.removedAt || null,
+      created_by: currentUser.id,
+    };
+
+    const query = String(catId).startsWith("local-")
+      ? supabase.from("cats").insert(payload)
+      : supabase.from("cats").update(payload).eq("id", catId);
+    const { data, error } = await query
+      .select("id,colony_id,name,sex,status,notes,sterilized,sterilization_date,sterilization_year,ear_tip,provenance,already_present,description,approximate_birth_date,removal_reason,removed_at,created_at")
+      .single();
+
+    if (error) {
+      setDataStatus(`Errore salvataggio gatto: ${error.message}`);
+      return false;
+    }
+
+    setCatsByColony((items) => ({
+      ...items,
+      [selected.id]: (items[selected.id] ?? []).map((cat) =>
+        cat.id === catId ? mapDbCat(data) : cat,
+      ),
+    }));
+    return true;
+  }
+
+  async function createHelpRequest(payload) {
+    if (!canEditSelected) {
+      setAuthMode("login");
+      setRegisterOpen(true);
+      return false;
+    }
+
+    const report = {
+      id: `local-${Date.now()}`,
+      colonyId: payload.colonyId,
+      colony: colonies.find((item) => item.id === payload.colonyId)?.name ?? "Colonia",
+      type: payload.type,
+      status: "open",
+      title: payload.title.trim(),
+      description: payload.description.trim(),
+      tone: payload.type === "rescue" ? "red" : "blue",
+      createdAt: new Date().toISOString(),
+    };
+    if (!report.title) return false;
+    setReports((items) => [report, ...items]);
+
+    const supabase = await getSupabaseClient();
+    if (!supabase || !currentUser?.id) return true;
+
+    const { data, error } = await supabase
+      .from("reports")
+      .insert({
+        colony_id: payload.colonyId,
+        type: payload.type,
+        status: "open",
+        title: report.title,
+        description: report.description || null,
+        created_by: currentUser.id,
+      })
+      .select("id,colony_id,type,status,title,description,created_at")
+      .single();
+    if (error) {
+      setDataStatus(`Errore richiesta aiuto: ${error.message}`);
+      return false;
+    }
+    setReports((items) => [mapDbReports([data], colonies)[0], ...items.filter((item) => item.id !== report.id)]);
+    return true;
   }
 
   return (
@@ -642,6 +1039,7 @@ function App() {
       <section className="workspace">
         <Topbar
           currentUser={currentUser}
+          isAuthenticated={isAuthenticated}
           onOpenAuth={() => setRegisterOpen(true)}
           onLogout={signOut}
         />
@@ -669,6 +1067,17 @@ function App() {
             onApproveParticipation={approveParticipation}
             onAcceptFriend={acceptFriend}
             onSendMessage={sendMessage}
+            isAuthenticated={isAuthenticated}
+            canEdit={canEditSelected}
+            onRequireAuth={() => {
+              setAuthMode("login");
+              setRegisterOpen(true);
+            }}
+            onUpdateColony={updateColony}
+            cats={visibleCats}
+            onSaveCat={saveCat}
+            helpReports={helpReports}
+            onCreateHelpRequest={createHelpRequest}
           />
         )}
         {activeSection === "Colonie" && (
@@ -677,6 +1086,11 @@ function App() {
             selectedId={selectedId}
             dataStatus={dataStatus}
             isDataBusy={isDataBusy}
+            isAuthenticated={isAuthenticated}
+            onRequireAuth={() => {
+              setAuthMode("login");
+              setRegisterOpen(true);
+            }}
             onSelect={(id) => {
               setSelectedId(id);
               setActiveSection("Mappa");
@@ -684,9 +1098,24 @@ function App() {
             onCreateColony={createColony}
           />
         )}
-        {activeSection === "Gatti" && <CatsSection colonies={colonies} />}
-        {activeSection === "Segnalazioni" && <ReportsSection colonies={colonies} />}
-        {activeSection === "Messaggi" && (
+        {activeSection === "Gatti" && (
+          <CatsSection
+            colonies={colonies}
+            catsByColony={catsByColony}
+            canEdit={canEditSelected}
+            onSaveCat={saveCat}
+          />
+        )}
+        {activeSection === "Segnalazioni" && (
+          <ReportsSection
+            colonies={colonies}
+            reports={reports}
+            canEdit={canEditSelected}
+            selected={selected}
+            onCreateHelpRequest={createHelpRequest}
+          />
+        )}
+        {activeSection === "Messaggi" && isAuthenticated && (
           <MessagesSection
             friendRequests={friendRequests}
             messages={messages}
@@ -696,7 +1125,13 @@ function App() {
             onSendMessage={sendMessage}
           />
         )}
-        {activeSection === "Community" && (
+        {activeSection === "Messaggi" && !isAuthenticated && (
+          <AuthRequiredPanel title="Messaggi" onRequireAuth={() => {
+            setAuthMode("login");
+            setRegisterOpen(true);
+          }} />
+        )}
+        {activeSection === "Community" && isAuthenticated && (
           <CommunitySection
             colonies={colonies}
             participationRequests={participationRequests}
@@ -705,8 +1140,14 @@ function App() {
             onAcceptFriend={acceptFriend}
           />
         )}
+        {activeSection === "Community" && !isAuthenticated && (
+          <AuthRequiredPanel title="Community" onRequireAuth={() => {
+            setAuthMode("login");
+            setRegisterOpen(true);
+          }} />
+        )}
       </section>
-      <MobilePreview selected={selected} onAddCat={addCat} onReportKitten={reportKitten} />
+      <MobilePreview selected={selected} onAddCat={addCat} onReportKitten={reportKitten} canEdit={canEditSelected} />
       {isRegisterOpen && (
         <RegisterModal
           authMode={authMode}
@@ -767,7 +1208,7 @@ function Sidebar({ activeSection, onSectionChange }) {
   );
 }
 
-function Topbar({ currentUser, onOpenAuth, onLogout }) {
+function Topbar({ currentUser, isAuthenticated, onOpenAuth, onLogout }) {
   return (
     <header className="topbar">
       <label className="search-box">
@@ -779,18 +1220,32 @@ function Topbar({ currentUser, onOpenAuth, onLogout }) {
         <span className={isSupabaseConfigured ? "db-status connected" : "db-status"}>
           {isSupabaseConfigured ? "DB collegato" : "Demo DB"}
         </span>
-        <button className="icon-btn alert" aria-label="Notifiche">
-          <Bell size={19} />
-          <span>3</span>
-        </button>
-        <PhotoImage photo={currentUser.avatar || catPhotos[4]} alt="Avatar utente" />
-        <div>
-          <strong>Ciao, {currentUser.username}</strong>
-          <small>{currentUser.role}</small>
-        </div>
-        <ChevronDown size={17} />
-        <button className="text-action" onClick={onOpenAuth}>Account</button>
-        <button className="text-action ghost" onClick={onLogout}>Esci</button>
+        {isAuthenticated && (
+          <button className="icon-btn alert" aria-label="Notifiche">
+            <Bell size={19} />
+            <span>3</span>
+          </button>
+        )}
+        {isAuthenticated ? (
+          <>
+            <PhotoImage photo={currentUser.avatar || catPhotos[4]} alt="Avatar utente" />
+            <div>
+              <strong>{currentUser.username}</strong>
+              <small>{currentUser.role}</small>
+            </div>
+            <ChevronDown size={17} />
+            <button className="text-action" onClick={onOpenAuth}>Account</button>
+            <button className="text-action ghost" onClick={onLogout}>Esci</button>
+          </>
+        ) : (
+          <>
+            <div>
+              <strong>Accesso pubblico</strong>
+              <small>Mappa e schede in sola lettura</small>
+            </div>
+            <button className="text-action" onClick={onOpenAuth}>Accedi</button>
+          </>
+        )}
       </div>
     </header>
   );
@@ -817,6 +1272,14 @@ function MapSection({
   onApproveParticipation,
   onAcceptFriend,
   onSendMessage,
+  isAuthenticated,
+  canEdit,
+  onRequireAuth,
+  onUpdateColony,
+  cats,
+  onSaveCat,
+  helpReports,
+  onCreateHelpRequest,
 }) {
   return (
     <div className="content-grid">
@@ -842,6 +1305,14 @@ function MapSection({
         onApproveParticipation={onApproveParticipation}
         onAcceptFriend={onAcceptFriend}
         onSendMessage={onSendMessage}
+        isAuthenticated={isAuthenticated}
+        canEdit={canEdit}
+        onRequireAuth={onRequireAuth}
+        onUpdateColony={onUpdateColony}
+        cats={cats}
+        onSaveCat={onSaveCat}
+        helpReports={helpReports}
+        onCreateHelpRequest={onCreateHelpRequest}
       />
     </div>
   );
@@ -950,6 +1421,14 @@ function DetailPanel({
   onApproveParticipation,
   onAcceptFriend,
   onSendMessage,
+  isAuthenticated,
+  canEdit,
+  onRequireAuth,
+  onUpdateColony,
+  cats,
+  onSaveCat,
+  helpReports,
+  onCreateHelpRequest,
 }) {
   return (
     <aside className="detail-panel">
@@ -978,13 +1457,20 @@ function DetailPanel({
           value={selected.aslDeclared ? "Sì" : "No"}
         />
       </div>
-      <AdminPanel
-        selected={selected}
-        participationRequests={participationRequests}
-        onToggleAsl={onToggleAsl}
-        onReplaceAdmin={onReplaceAdmin}
-        onApproveParticipation={onApproveParticipation}
-      />
+      {!isAuthenticated && <PublicReadOnlyNotice onRequireAuth={onRequireAuth} />}
+      {canEdit && (
+        <>
+          <AdminPanel
+            selected={selected}
+            participationRequests={participationRequests}
+            onToggleAsl={onToggleAsl}
+            onReplaceAdmin={onReplaceAdmin}
+            onApproveParticipation={onApproveParticipation}
+          />
+          <ColonyEditPanel selected={selected} onUpdateColony={onUpdateColony} />
+        </>
+      )}
+      <HelpFeed reports={helpReports} selected={selected} canEdit={canEdit} onCreateHelpRequest={onCreateHelpRequest} />
       <SanitaryPanel selected={selected} />
       <MediaStrip photos={selected.photos} title="Foto della colonia" />
       <section className="cats-section">
@@ -992,14 +1478,14 @@ function DetailPanel({
           <h2>Gatti della colonia ({selected.cats})</h2>
           <button>Vedi tutti</button>
         </div>
-        {selected.cats > 0 ? (
+        {cats.length > 0 ? (
           <div className="cat-cards">
             {cats.map((cat) => (
-              <article className="cat-card" key={cat.name}>
+              <article className="cat-card" key={cat.id}>
                 <PhotoImage photo={cat.photo} alt={cat.name} />
                 <strong>{cat.name}</strong>
                 <span>{cat.sex}</span>
-                <small>{cat.note}</small>
+                <small>{cat.notes || cat.status}</small>
                 <ShieldCheck size={18} />
               </article>
             ))}
@@ -1008,45 +1494,53 @@ function DetailPanel({
           <div className="empty-state">
             <Cat size={26} />
             <strong>Nessun gatto censito</strong>
-            <span>Usa “Aggiungi un gatto” per iniziare la colonia di test.</span>
+            {canEdit && <span>Usa Aggiungi un gatto per iniziare.</span>}
           </div>
         )}
       </section>
-      <section className="actions">
-        <ActionButton icon={Cat} label="Aggiungi un gatto" onClick={onAddCat} />
-        <ActionButton icon={Eye} label="Segnala avvistamento" tone="blue" />
-        <ActionButton icon={PawPrint} label="Segnala cucciolata" tone="orange" onClick={onReportKitten} />
-        <ActionButton icon={HeartHandshake} label="Richiedi aiuto o recupero" tone="red" />
-      </section>
-      <SocialPanel
-        friendRequests={friendRequests}
-        messages={messages}
-        messageDraft={messageDraft}
-        setMessageDraft={setMessageDraft}
-        onAcceptFriend={onAcceptFriend}
-        onSendMessage={onSendMessage}
-      />
+      {canEdit && cats.length > 0 && <CatEditPanel cat={cats[0]} onSaveCat={onSaveCat} />}
+      {canEdit && (
+        <section className="actions">
+          <ActionButton icon={Cat} label="Aggiungi un gatto" onClick={onAddCat} />
+          <ActionButton icon={Eye} label="Segnala avvistamento" tone="blue" />
+          <ActionButton icon={PawPrint} label="Segnala cucciolata" tone="orange" onClick={onReportKitten} />
+          <ActionButton icon={HeartHandshake} label="Richiedi aiuto o recupero" tone="red" />
+        </section>
+      )}
+      {isAuthenticated && (
+        <SocialPanel
+          friendRequests={friendRequests}
+          messages={messages}
+          messageDraft={messageDraft}
+          setMessageDraft={setMessageDraft}
+          onAcceptFriend={onAcceptFriend}
+          onSendMessage={onSendMessage}
+        />
+      )}
       <section className="comments">
         <h2>Commenti e aggiornamenti</h2>
-        <div className="comment-input">
-          <PhotoImage photo={catPhotos[4]} alt="" />
-          <input
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={(event) => event.key === "Enter" && addComment()}
-            placeholder="Scrivi un commento o un aggiornamento..."
-          />
-          <button aria-label="Carica foto">
-            <Camera size={17} />
-          </button>
-          <button onClick={addComment}>Invia</button>
-        </div>
+        {isAuthenticated && (
+          <div className="comment-input">
+            <PhotoImage photo={catPhotos[4]} alt="" />
+            <input
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => event.key === "Enter" && addComment()}
+              placeholder="Scrivi un commento o un aggiornamento..."
+            />
+            <button aria-label="Carica foto">
+              <Camera size={17} />
+            </button>
+            <button onClick={addComment}>Invia</button>
+          </div>
+        )}
+        {!comments.length && <p className="empty-copy">Nessun commento pubblicato.</p>}
         {comments.map((comment, index) => (
           <article className="comment" key={`${comment}-${index}`}>
             <PhotoImage photo={index === 0 ? catPhotos[4] : catPhotos[0]} alt="" />
             <div>
-              <strong>{index === 0 ? "Sara" : "Laura B."}</strong>
-              <span>{index === 0 ? "adesso" : "oggi, 09:24"}</span>
+              <strong>Utente</strong>
+              <span>{index === 0 ? "adesso" : "oggi"}</span>
               <p>{comment}</p>
               <button>Rispondi</button>
             </div>
@@ -1055,6 +1549,372 @@ function DetailPanel({
       </section>
     </aside>
   );
+}
+
+function PublicReadOnlyNotice({ onRequireAuth }) {
+  return (
+    <section className="auth-notice">
+      <strong>Visualizzazione pubblica</strong>
+      <button onClick={onRequireAuth}>Accedi per modificare</button>
+    </section>
+  );
+}
+
+function ColonyEditPanel({ selected, onUpdateColony }) {
+  const [draft, setDraft] = useState(() => makeColonyDraft(selected));
+  const [status, setStatus] = useState("");
+  const [isGeocoding, setGeocoding] = useState(false);
+
+  useEffect(() => {
+    setDraft(makeColonyDraft(selected));
+    setStatus("");
+  }, [selected]);
+
+  const updateField = (field) => (event) => {
+    const value = event.target.type === "checkbox" ? event.target.checked : event.target.value;
+    setDraft((current) => ({ ...current, [field]: value }));
+  };
+
+  async function geocodeAddress() {
+    const query = [draft.address, draft.city, "Italia"].filter(Boolean).join(", ");
+    if (!draft.address.trim() || !draft.city.trim()) {
+      setStatus("Inserisci indirizzo e città.");
+      return;
+    }
+
+    setGeocoding(true);
+    setStatus("Ricerca coordinate...");
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&limit=1&addressdetails=1&q=${encodeURIComponent(query)}`,
+      );
+      if (!response.ok) throw new Error("Servizio geocoding non disponibile.");
+      const results = await response.json();
+      const first = results[0];
+      if (!first) {
+        setStatus("Coordinate non trovate.");
+        return;
+      }
+      setDraft((current) => ({
+        ...current,
+        lat: Number(first.lat).toFixed(6),
+        lng: Number(first.lon).toFixed(6),
+      }));
+      setStatus("Coordinate aggiornate.");
+    } catch (error) {
+      setStatus(error.message ?? "Errore geocoding.");
+    } finally {
+      setGeocoding(false);
+    }
+  }
+
+  async function submit(event) {
+    event.preventDefault();
+    const saved = await onUpdateColony(selected.id, draft);
+    setStatus(saved ? "Modifiche salvate." : "Salvataggio non riuscito.");
+  }
+
+  return (
+    <form className="edit-panel" onSubmit={submit}>
+      <div className="section-title compact">
+        <h2>Modifica colonia</h2>
+      </div>
+      <div className="edit-grid">
+        <label>
+          Nome
+          <input value={draft.name} onChange={updateField("name")} />
+        </label>
+        <label>
+          Stato
+          <select value={draft.status} onChange={updateField("status")}>
+            <option>Attiva</option>
+            <option>Da verificare</option>
+            <option>Critica</option>
+            <option>Chiusa</option>
+          </select>
+        </label>
+        <label>
+          Indirizzo
+          <input value={draft.address} onChange={updateField("address")} />
+        </label>
+        <label>
+          Città
+          <input value={draft.city} onChange={updateField("city")} />
+        </label>
+        <label>
+          Latitudine
+          <input value={draft.lat} onChange={updateField("lat")} />
+        </label>
+        <label>
+          Longitudine
+          <input value={draft.lng} onChange={updateField("lng")} />
+        </label>
+        <button type="button" className="secondary-button" onClick={geocodeAddress} disabled={isGeocoding}>
+          {isGeocoding ? "Cerco..." : "Trova coordinate"}
+        </button>
+        <label className="inline-check">
+          <input type="checkbox" checked={draft.aslDeclared} onChange={updateField("aslDeclared")} />
+          Dichiarata all'ASL
+        </label>
+        <label>
+          Numero registro
+          <input value={draft.registryNumber} onChange={updateField("registryNumber")} />
+        </label>
+        <label>
+          Data ultimo aggiornamento
+          <input type="date" value={draft.healthLastUpdated} onChange={updateField("healthLastUpdated")} />
+        </label>
+        <label>
+          Data scheda
+          <input type="date" value={draft.healthRecordDate} onChange={updateField("healthRecordDate")} />
+        </label>
+        <label>
+          Volontario referente
+          <input value={draft.volunteerName} onChange={updateField("volunteerName")} />
+        </label>
+        <label>
+          Telefono
+          <input value={draft.volunteerPhone} onChange={updateField("volunteerPhone")} />
+        </label>
+        <label>
+          Orari
+          <input value={draft.volunteerCallHours} onChange={updateField("volunteerCallHours")} />
+        </label>
+        {[
+          ["Maschi", "totalMales"],
+          ["Maschi sterilizzati", "sterilizedMales"],
+          ["Maschi non sterilizzati", "unsterilizedMales"],
+          ["Femmine", "totalFemales"],
+          ["Femmine sterilizzate", "sterilizedFemales"],
+          ["Femmine non sterilizzate", "unsterilizedFemales"],
+          ["Totale sterilizzati", "totalSterilized"],
+          ["Totale non sterilizzati", "totalUnsterilized"],
+        ].map(([label, field]) => (
+          <label key={field}>
+            {label}
+            <input type="number" min="0" value={draft[field]} onChange={updateField(field)} />
+          </label>
+        ))}
+        <label className="wide-field">
+          Contesto luogo
+          <textarea value={draft.locationContext} onChange={updateField("locationContext")} />
+        </label>
+        <label className="wide-field">
+          Note sanitarie
+          <textarea value={draft.healthNotes} onChange={updateField("healthNotes")} />
+        </label>
+      </div>
+      {status && <p className="form-note">{status}</p>}
+      <button className="primary">Salva modifiche</button>
+    </form>
+  );
+}
+
+function makeColonyDraft(selected) {
+  const [zoneAddress = "", zoneCity = "Napoli"] = (selected.zone ?? "").split(" - ");
+  return {
+    name: selected.name ?? "",
+    address: selected.address ?? zoneAddress,
+    city: selected.city ?? zoneCity,
+    status: selected.status ?? "Attiva",
+    lat: selected.lat ?? "",
+    lng: selected.lng ?? "",
+    aslDeclared: Boolean(selected.aslDeclared),
+    registryNumber: selected.registryNumber ?? "",
+    locationContext: selected.locationContext ?? "",
+    healthLastUpdated: selected.healthLastUpdated ?? "",
+    healthRecordDate: selected.healthRecordDate ?? "",
+    volunteerName: selected.volunteerName ?? "",
+    volunteerPhone: selected.volunteerPhone ?? "",
+    volunteerCallHours: selected.volunteerCallHours ?? "",
+    totalMales: selected.totalMales ?? 0,
+    sterilizedMales: selected.sterilizedMales ?? 0,
+    unsterilizedMales: selected.unsterilizedMales ?? 0,
+    totalFemales: selected.totalFemales ?? 0,
+    sterilizedFemales: selected.sterilizedFemales ?? 0,
+    unsterilizedFemales: selected.unsterilizedFemales ?? 0,
+    totalSterilized: selected.totalSterilized ?? 0,
+    totalUnsterilized: selected.totalUnsterilized ?? 0,
+    healthNotes: selected.healthNotes ?? "",
+  };
+}
+
+function HelpFeed({ reports, selected, canEdit, onCreateHelpRequest }) {
+  const [isCreating, setCreating] = useState(false);
+  const [draft, setDraft] = useState({
+    title: "",
+    description: "",
+    type: "rescue",
+  });
+  const updateField = (field) => (event) =>
+    setDraft((current) => ({ ...current, [field]: event.target.value }));
+
+  async function submit(event) {
+    event.preventDefault();
+    const created = await onCreateHelpRequest({
+      ...draft,
+      colonyId: selected.id,
+    });
+    if (!created) return;
+    setDraft({ title: "", description: "", type: "rescue" });
+    setCreating(false);
+  }
+
+  return (
+    <section className="help-feed">
+      <div className="section-title compact">
+        <h2>Richieste di aiuto</h2>
+        {canEdit && (
+          <button onClick={() => setCreating((value) => !value)}>
+            <Plus size={16} />
+            Nuova
+          </button>
+        )}
+      </div>
+      {isCreating && (
+        <form className="inline-form" onSubmit={submit}>
+          <label>
+            Tipo
+            <select value={draft.type} onChange={updateField("type")}>
+              <option value="rescue">Soccorso</option>
+              <option value="problem">Problema</option>
+            </select>
+          </label>
+          <label>
+            Titolo
+            <input value={draft.title} onChange={updateField("title")} />
+          </label>
+          <label className="wide-field">
+            Dettagli
+            <textarea value={draft.description} onChange={updateField("description")} />
+          </label>
+          <button className="primary">Pubblica richiesta</button>
+        </form>
+      )}
+      {reports.length ? (
+        reports.slice(0, 4).map((report) => (
+          <article className={`report-card ${report.tone}`} key={report.id}>
+            <span>{report.type === "rescue" ? "Soccorso" : "Problema"}</span>
+            <strong>{report.title}</strong>
+            {report.description && <small>{report.description}</small>}
+          </article>
+        ))
+      ) : (
+        <p className="empty-copy">Nessuna richiesta aperta.</p>
+      )}
+    </section>
+  );
+}
+
+function CatEditPanel({ cat, onSaveCat }) {
+  const [draft, setDraft] = useState(() => makeCatDraft(cat));
+  const [status, setStatus] = useState("");
+
+  useEffect(() => {
+    setDraft(makeCatDraft(cat));
+    setStatus("");
+  }, [cat]);
+
+  const updateField = (field) => (event) => {
+    const { type, checked, value } = event.target;
+    setDraft((current) => ({
+      ...current,
+      [field]: type === "checkbox" ? checked : value,
+    }));
+  };
+
+  async function submit(event) {
+    event.preventDefault();
+    const saved = await onSaveCat(cat.id, draft);
+    setStatus(saved ? "Scheda gatto salvata." : "Salvataggio non riuscito.");
+  }
+
+  return (
+    <form className="edit-panel" onSubmit={submit}>
+      <div className="section-title compact">
+        <h2>Modifica gatto</h2>
+      </div>
+      <div className="edit-grid">
+        <label>
+          Nome
+          <input value={draft.name} onChange={updateField("name")} />
+        </label>
+        <label>
+          Sesso
+          <select value={draft.sex} onChange={updateField("sex")}>
+            <option value="">Da verificare</option>
+            <option>Maschio</option>
+            <option>Femmina</option>
+          </select>
+        </label>
+        <label>
+          Stato
+          <input value={draft.status} onChange={updateField("status")} />
+        </label>
+        <label>
+          Data sterilizzazione
+          <input type="date" value={draft.sterilizationDate} onChange={updateField("sterilizationDate")} />
+        </label>
+        <label>
+          Anno sterilizzazione
+          <input type="number" min="1990" value={draft.sterilizationYear} onChange={updateField("sterilizationYear")} />
+        </label>
+        <label className="inline-check">
+          <input type="checkbox" checked={draft.sterilized === true} onChange={(event) => setDraft((current) => ({ ...current, sterilized: event.target.checked }))} />
+          Sterilizzato
+        </label>
+        <label className="inline-check">
+          <input type="checkbox" checked={draft.earTip} onChange={updateField("earTip")} />
+          Taglio padiglione
+        </label>
+        <label>
+          Provenienza
+          <input value={draft.provenance} onChange={updateField("provenance")} />
+        </label>
+        <label className="wide-field">
+          Descrizione
+          <textarea value={draft.description} onChange={updateField("description")} />
+        </label>
+        <label className="wide-field">
+          Note
+          <textarea value={draft.notes} onChange={updateField("notes")} />
+        </label>
+        <label>
+          Nascita presunta
+          <input type="date" value={draft.approximateBirthDate} onChange={updateField("approximateBirthDate")} />
+        </label>
+        <label>
+          Motivo cancellazione
+          <input value={draft.removalReason} onChange={updateField("removalReason")} />
+        </label>
+        <label>
+          Data cancellazione
+          <input type="date" value={draft.removedAt} onChange={updateField("removedAt")} />
+        </label>
+      </div>
+      {status && <p className="form-note">{status}</p>}
+      <button className="primary">Salva scheda gatto</button>
+    </form>
+  );
+}
+
+function makeCatDraft(cat) {
+  return {
+    name: cat.name ?? "",
+    sex: cat.sex ?? "",
+    status: cat.status ?? "",
+    notes: cat.notes ?? "",
+    sterilized: cat.sterilized ?? "",
+    sterilizationDate: cat.sterilizationDate ?? "",
+    sterilizationYear: cat.sterilizationYear ?? "",
+    earTip: Boolean(cat.earTip),
+    provenance: cat.provenance ?? "",
+    alreadyPresent: cat.alreadyPresent ?? "",
+    description: cat.description ?? "",
+    approximateBirthDate: cat.approximateBirthDate ?? "",
+    removalReason: cat.removalReason ?? "",
+    removedAt: cat.removedAt ?? "",
+  };
 }
 
 function Fact({ icon: Icon, label, value }) {
@@ -1098,12 +1958,6 @@ function AdminPanel({
 }) {
   const colonyAdminUser = seedUsers.find((user) => user.username === selected.admin);
   const candidateAdmins = [
-    "Sara",
-    "Laura B.",
-    "Marco T.",
-    "Elisa R.",
-    "Giulia N.",
-    "Dario P.",
     ...seedUsers.map((user) => user.username),
   ];
 
@@ -1111,13 +1965,11 @@ function AdminPanel({
     <section className="admin-panel">
       <div className="section-title compact">
         <h2>Gestione permessi</h2>
-        <span>Admin sito: controllo totale</span>
       </div>
       <div className="admin-grid">
         <article className="super-admin">
           <span>Admin sito</span>
-          <strong>Sara</strong>
-          <small>Può deporre o sostituire qualsiasi amministratore colonia.</small>
+          <strong>site_admin</strong>
         </article>
         <article>
           <span>Amministratore colonia</span>
@@ -1128,7 +1980,6 @@ function AdminPanel({
             <strong>{selected.admin}</strong>
           </div>
           {colonyAdminUser?.email && <small>{colonyAdminUser.email}</small>}
-          <small>Chi crea la colonia la amministra finché l'admin sito non interviene.</small>
         </article>
         <label className="admin-select">
           Sostituisci amministratore
@@ -1297,6 +2148,8 @@ function ColoniesSection({
   selectedId,
   dataStatus,
   isDataBusy,
+  isAuthenticated,
+  onRequireAuth,
   onSelect,
   onCreateColony,
 }) {
@@ -1390,9 +2243,8 @@ function ColoniesSection({
     <section className="page-section">
       <PageHeader
         title="Colonie"
-        description="Gestione delle colonie registrate, amministratori, stato ASL e numeri principali."
         action="Nuova colonia"
-        onAction={() => setCreating((value) => !value)}
+        onAction={() => (isAuthenticated ? setCreating((value) => !value) : onRequireAuth())}
       />
       <div className={isDataBusy ? "data-banner loading" : "data-banner"}>
         {isDataBusy ? "Sincronizzazione dati..." : dataStatus}
@@ -1550,96 +2402,76 @@ function ColoniesSection({
   );
 }
 
-function CatsSection({ colonies }) {
+function CatsSection({ colonies, catsByColony, canEdit, onSaveCat }) {
   const registryCats = colonies.flatMap((colony) =>
-    colony.cats > 0
-      ? cats.slice(0, Math.min(cats.length, 4)).map((cat, index) => ({
-          ...cat,
-          id: `${colony.id}-${cat.name}-${index}`,
-          colony: colony.name,
-          zone: colony.zone,
-          lastSeen: index === 0 ? "oggi" : "questa settimana",
-        }))
-      : [],
+    (catsByColony[colony.id] ?? []).map((cat, index) => ({
+      ...cat,
+      id: cat.id ?? `${colony.id}-${cat.name}-${index}`,
+      colony: colony.name,
+      zone: colony.zone,
+      lastSeen: index === 0 ? "oggi" : "questa settimana",
+    })),
   );
+  const [editingCat, setEditingCat] = useState(null);
 
   return (
     <section className="page-section">
-      <PageHeader
-        title="Gatti"
-        description="Registro dei gatti censiti, con foto, colonia, stato e ultimo avvistamento."
-        action="Aggiungi gatto"
-      />
+      <PageHeader title="Gatti" action="Aggiungi gatto" />
       <div className="registry-grid">
         {registryCats.map((cat) => (
           <article className="registry-card" key={cat.id}>
             <PhotoImage photo={cat.photo} alt={cat.name} />
             <div>
               <strong>{cat.name}</strong>
-              <span>{cat.sex} · {cat.note}</span>
+              <span>{cat.sex || "Sesso da verificare"} ? {cat.notes || cat.status || "Scheda aperta"}</span>
               <small>{cat.colony}</small>
               <em>Ultimo avvistamento: {cat.lastSeen}</em>
             </div>
-            <button>Apri scheda</button>
+            {canEdit && <button onClick={() => setEditingCat(cat)}>Modifica</button>}
           </article>
         ))}
       </div>
+      {canEdit && editingCat && <CatEditPanel cat={editingCat} onSaveCat={onSaveCat} />}
+      {!registryCats.length && <p className="empty-copy">Nessun gatto censito nel database.</p>}
     </section>
   );
 }
 
-function ReportsSection({ colonies }) {
-  const reports = [
-    {
-      title: "Richiesta recupero urgente",
-      colony: "Angiporto dei Caserti",
-      type: "Soccorso",
-      status: "Aperta",
-      tone: "red",
-    },
-    {
-      title: "Possibile gatto già censito in altra colonia",
-      colony: "Giardini di Via Padova",
-      type: "Avvistamento",
-      status: "Da verificare",
-      tone: "blue",
-    },
-    {
-      title: "Segnalata nuova cucciolata",
-      colony: "Cortile di Via Prina",
-      type: "Cucciolata",
-      status: "In corso",
-      tone: "orange",
-    },
+function ReportsSection({ colonies, reports, canEdit, selected, onCreateHelpRequest }) {
+  const columns = [
+    ["open", "Aperta"],
+    ["checking", "Da verificare"],
+    ["in_progress", "In corso"],
   ];
 
   return (
     <section className="page-section">
-      <PageHeader
-        title="Segnalazioni"
-        description="Avvistamenti, cucciolate, problemi, richieste di recupero e verifiche incrociate."
-        action="Nuova segnalazione"
+      <PageHeader title="Segnalazioni" action="Nuova segnalazione" />
+      <HelpFeed
+        reports={reports.filter((report) => report.type === "rescue" || report.type === "problem")}
+        selected={selected}
+        canEdit={canEdit}
+        onCreateHelpRequest={onCreateHelpRequest}
       />
       <div className="kanban-grid">
-        {["Aperta", "Da verificare", "In corso"].map((status) => (
+        {columns.map(([status, label]) => (
           <div className="kanban-column" key={status}>
-            <h2>{status}</h2>
+            <h2>{label}</h2>
             {reports
               .filter((report) => report.status === status)
               .map((report) => (
-                <article className={`report-card ${report.tone}`} key={report.title}>
-                  <span>{report.type}</span>
+                <article className={`report-card ${report.tone}`} key={report.id}>
+                  <span>{report.type === "rescue" ? "Soccorso" : report.type === "birth" ? "Cucciolata" : "Segnalazione"}</span>
                   <strong>{report.title}</strong>
                   <small>{report.colony}</small>
-                  <button>Gestisci</button>
+                  {canEdit && <button>Gestisci</button>}
                 </article>
               ))}
+            {!reports.some((report) => report.status === status) && <p className="empty-copy">Nessuna voce.</p>}
           </div>
         ))}
       </div>
-      <small className="section-note">
-        Colonie monitorate: {colonies.length}. Le segnalazioni saranno salvate in Postgres con stato, priorità e storico.
-      </small>
+      <small className="section-note">Colonie monitorate: {colonies.length}</small>
     </section>
   );
 }
@@ -1656,7 +2488,6 @@ function MessagesSection({
     <section className="page-section">
       <PageHeader
         title="Messaggi"
-        description="Chat operative tra volontari, amministratori colonia e admin sito."
         action="Nuovo messaggio"
       />
       <SocialPanel
@@ -1682,7 +2513,6 @@ function CommunitySection({
     <section className="page-section">
       <PageHeader
         title="Community"
-        description="Richieste di amicizia, partecipazione alle colonie e rete dei volontari."
         action="Invita utente"
       />
       <div className="community-grid">
@@ -1732,13 +2562,27 @@ function PageHeader({ title, description, action, onAction }) {
     <header className="page-header">
       <div>
         <h1>{title}</h1>
-        <p>{description}</p>
+        {description && <p>{description}</p>}
       </div>
-      <button onClick={onAction}>
-        <Plus size={18} />
-        {action}
-      </button>
+      {action && (
+        <button onClick={onAction}>
+          <Plus size={18} />
+          {action}
+        </button>
+      )}
     </header>
+  );
+}
+
+function AuthRequiredPanel({ title, onRequireAuth }) {
+  return (
+    <section className="page-section">
+      <PageHeader title={title} />
+      <div className="auth-notice large">
+        <strong>Accesso richiesto</strong>
+        <button onClick={onRequireAuth}>Accedi</button>
+      </div>
+    </section>
   );
 }
 
@@ -1803,7 +2647,7 @@ function RegisterModal({
           <input
             value={authForm.username}
             onChange={updateField("username")}
-            placeholder="es. sara_volontaria"
+            placeholder="es. ilaria_nappino"
           />
         </label>
       )}
@@ -1813,7 +2657,7 @@ function RegisterModal({
           type="email"
           value={authForm.email}
           onChange={updateField("email")}
-          placeholder="es. sara@example.com"
+          placeholder="es. nome@example.com"
         />
       </label>
       <label>
@@ -1847,7 +2691,7 @@ function RegisterModal({
   );
 }
 
-function MobilePreview({ selected, onAddCat, onReportKitten }) {
+function MobilePreview({ selected, onAddCat, onReportKitten, canEdit }) {
   return (
     <aside className="phone-preview" aria-label="Anteprima mobile">
       <div className="phone-top">
@@ -1881,12 +2725,14 @@ function MobilePreview({ selected, onAddCat, onReportKitten }) {
           <PawPrint size={16} /> {selected.kittens} Cucciolate
         </span>
       </div>
-      <div className="phone-actions">
-        <button onClick={onAddCat}>Aggiungi un gatto</button>
-        <button>Segnala avvistamento</button>
-        <button onClick={onReportKitten}>Segnala cucciolata</button>
-        <button>Richiedi aiuto</button>
-      </div>
+      {canEdit && (
+        <div className="phone-actions">
+          <button onClick={onAddCat}>Aggiungi un gatto</button>
+          <button>Segnala avvistamento</button>
+          <button onClick={onReportKitten}>Segnala cucciolata</button>
+          <button>Richiedi aiuto</button>
+        </div>
+      )}
     </aside>
   );
 }
@@ -1896,3 +2742,4 @@ function PhotoImage({ photo, alt }) {
 }
 
 createRoot(document.getElementById("root")).render(<App />);
+
