@@ -355,6 +355,12 @@ function shouldShowDataBanner(status, isBusy) {
   return status.startsWith("Errore") || status.startsWith("Supabase collegato");
 }
 
+function getAuthRedirectUrl() {
+  const configuredUrl = import.meta.env.VITE_PUBLIC_SITE_URL?.trim();
+  const fallbackUrl = typeof window !== "undefined" ? window.location.origin : "";
+  return (configuredUrl || fallbackUrl).replace(/\/$/, "");
+}
+
 async function uploadPublicImage(supabase, bucket, file, folder) {
   if (!file) return "";
   const extension = file.name?.split(".").pop() || "jpg";
@@ -1085,6 +1091,7 @@ function App() {
           email: authForm.email,
           password: authForm.password,
           options: {
+            emailRedirectTo: getAuthRedirectUrl(),
             data: {
               username: authForm.username,
               avatar_url: "",
