@@ -48,6 +48,20 @@ const catPhotos = [
   catSix,
 ];
 
+const avatarPresets = catPhotos.map((photo, index) => ({
+  id: `preset:cat-${index + 1}`,
+  photo,
+  label: `Avatar gatto ${index + 1}`,
+}));
+
+function resolveAvatar(value) {
+  if (!value) return catFive;
+  if (value.startsWith?.("preset:")) {
+    return avatarPresets.find((preset) => preset.id === value)?.photo ?? catFive;
+  }
+  return value;
+}
+
 const catPlaceholder =
   "data:image/svg+xml;utf8," +
   encodeURIComponent(
@@ -390,6 +404,7 @@ function App() {
   const [selectedId, setSelectedId] = useState(6);
   const [activeSection, setActiveSection] = useState("Mappa");
   const [isRegisterOpen, setRegisterOpen] = useState(false);
+  const [isProfileOpen, setProfileOpen] = useState(false);
   const [comments, setComments] = useState([]);
   const [draft, setDraft] = useState("");
   const [reports, setReports] = useState([]);
@@ -514,9 +529,30 @@ function App() {
       id: user.id,
       username: profile?.username ?? metadata.username ?? user.email,
       email: profile?.email ?? user.email,
-      avatar: profile?.avatar_url || catFive,
+      avatar: resolveAvatar(profile?.avatar_url || metadata.avatar_url),
+      avatarUrl: profile?.avatar_url || metadata.avatar_url || "",
       role: profile?.role ?? "user",
     });
+  }
+
+  async function ensureCurrentProfile(supabase) {
+    if (!supabase || !currentUser?.id) return false;
+
+    const username = (currentUser.username || currentUser.email?.split("@")[0] || "utente").trim();
+    const { error } = await supabase
+      .from("profiles")
+      .upsert(
+        {
+          id: currentUser.id,
+          username,
+          email: currentUser.email,
+          avatar_url: currentUser.avatarUrl || "",
+        },
+        { onConflict: "id" },
+      );
+
+    if (error) throw error;
+    return true;
   }
 
   async function loadColoniesFromSupabase(existingClient) {
@@ -881,6 +917,7 @@ function App() {
 
     setDataBusy(true);
     try {
+      await ensureCurrentProfile(supabase);
       const { data, error } = await supabase
         .from("colonies")
         .insert({
@@ -906,6 +943,13 @@ function App() {
         .single();
 
       if (error) throw error;
+
+      await supabase.from("colony_members").upsert({
+        colony_id: data.id,
+        profile_id: currentUser.id,
+        role: "colony_admin",
+        approved_by: currentUser.id,
+      });
 
       let savedColony = data;
       if (newColony.photoFile) {
@@ -1116,6 +1160,90 @@ function App() {
     }
   }
 
+  async function saveProfile(profilePatch) {
+    if (!isAuthenticated || !currentUser) {
+      setAuthMode("login");
+      setRegisterOpen(true);
+      return false;
+    }
+
+    const username = profilePatch.username.trim();
+    if (!username) {
+      setAuthStatus("Inserisci un nome utente.");
+      return false;
+    }
+
+    const supabase = await getSupabaseClient();
+    let avatarUrl = profilePatch.avatarUrl;
+
+    try {
+      if (supabase && profilePatch.avatarFile) {
+        avatarUrl = await uploadPublicImage(
+          supabase,
+          "cat-photos",
+          profilePatch.avatarFile,
+          `avatars/${currentUser.id}`,
+        );
+      } else if (!supabase && profilePatch.avatarFile) {
+        avatarUrl = URL.createObjectURL(profilePatch.avatarFile);
+      }
+
+      if (supabase && currentUser.id) {
+        const { data, error } = await supabase
+          .from("profiles")
+          .upsert(
+            {
+              id: currentUser.id,
+              username,
+              email: currentUser.email,
+              avatar_url: avatarUrl || "",
+            },
+            { onConflict: "id" },
+          )
+          .select("username,email,avatar_url,role")
+          .single();
+        if (error) throw error;
+
+        await supabase.auth.updateUser({
+          data: {
+            username: data.username,
+            avatar_url: data.avatar_url || "",
+          },
+        });
+
+        const nextUser = {
+          ...currentUser,
+          username: data.username,
+          email: data.email ?? currentUser.email,
+          avatar: resolveAvatar(data.avatar_url),
+          avatarUrl: data.avatar_url || "",
+          role: data.role ?? currentUser.role,
+        };
+        setCurrentUser(nextUser);
+      } else {
+        setCurrentUser((user) => ({
+          ...user,
+          username,
+          avatar: resolveAvatar(avatarUrl),
+          avatarUrl,
+        }));
+      }
+
+      setProfiles((items) =>
+        items.map((profile) =>
+          profile.id === currentUser.id
+            ? { ...profile, username, email: currentUser.email, avatar: resolveAvatar(avatarUrl) }
+            : profile,
+        ),
+      );
+      setAuthStatus("Profilo aggiornato.");
+      return true;
+    } catch (error) {
+      setAuthStatus(`Errore profilo: ${error.message}`);
+      return false;
+    }
+  }
+
   async function signOut() {
     const supabase = await getSupabaseClient();
     if (supabase) await supabase.auth.signOut();
@@ -1124,6 +1252,7 @@ function App() {
     setMessages([]);
     setNotifications([]);
     setRegisterOpen(false);
+    setProfileOpen(false);
     setAuthMode("login");
     setAuthStatus("Sessione chiusa.");
   }
@@ -1751,6 +1880,7 @@ function App() {
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
           onOpenAuth={() => setRegisterOpen(true)}
+          onOpenProfile={() => setProfileOpen(true)}
           onLogout={signOut}
         />
         {activeSection === "Mappa" && (
@@ -1908,6 +2038,14 @@ function App() {
           onClose={() => setRegisterOpen(false)}
         />
       )}
+      {isProfileOpen && isAuthenticated && (
+        <ProfileModal
+          currentUser={currentUser}
+          authStatus={authStatus}
+          onSave={saveProfile}
+          onClose={() => setProfileOpen(false)}
+        />
+      )}
     </main>
   );
 }
@@ -1955,7 +2093,7 @@ function Sidebar({ activeSection, onSectionChange, counts }) {
   );
 }
 
-function Topbar({ currentUser, isAuthenticated, notifications, isNotificationsOpen, setNotificationsOpen, searchQuery, setSearchQuery, onOpenAuth, onLogout }) {
+function Topbar({ currentUser, isAuthenticated, notifications, isNotificationsOpen, setNotificationsOpen, searchQuery, setSearchQuery, onOpenAuth, onOpenProfile, onLogout }) {
   const unreadCount = notifications.filter((item) => !item.read).length;
 
   return (
@@ -2003,7 +2141,7 @@ function Topbar({ currentUser, isAuthenticated, notifications, isNotificationsOp
               <small>{currentUser.role}</small>
             </div>
             <ChevronDown size={17} />
-            <button className="text-action" onClick={onOpenAuth}>Account</button>
+            <button className="text-action" onClick={onOpenProfile}>Account</button>
             <button className="text-action ghost" onClick={onLogout}>Esci</button>
           </>
         ) : (
@@ -4007,6 +4145,96 @@ function Metric({ icon: Icon, label, value }) {
       <span>{label}</span>
       <strong>{value}</strong>
     </article>
+  );
+}
+
+function ProfileModal({ currentUser, authStatus, onSave, onClose }) {
+  const initialAvatar = currentUser.avatarUrl || "";
+  const [draft, setDraft] = useState({
+    username: currentUser.username || "",
+    avatarUrl: initialAvatar,
+    avatarFile: null,
+    avatarPreview: resolveAvatar(initialAvatar || currentUser.avatar),
+  });
+  const [isSaving, setSaving] = useState(false);
+
+  const updateUsername = (event) =>
+    setDraft((current) => ({ ...current, username: event.target.value }));
+
+  const selectPreset = (preset) => {
+    setDraft((current) => ({
+      ...current,
+      avatarUrl: preset.id,
+      avatarFile: null,
+      avatarPreview: preset.photo,
+    }));
+  };
+
+  const uploadAvatar = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setDraft((current) => ({
+      ...current,
+      avatarUrl: "",
+      avatarFile: file,
+      avatarPreview: URL.createObjectURL(file),
+    }));
+  };
+
+  async function submit(event) {
+    event.preventDefault();
+    setSaving(true);
+    const saved = await onSave(draft);
+    setSaving(false);
+    if (saved) onClose();
+  }
+
+  return (
+    <form className="register-modal profile-modal" aria-label="Profilo utente" onSubmit={submit}>
+      <div className="modal-tabs profile-tabs">
+        <button type="button" className="selected">
+          Profilo
+        </button>
+        <button type="button" className="close" onClick={onClose} aria-label="Chiudi">
+          <X size={18} />
+        </button>
+      </div>
+      <div className="profile-preview">
+        <PhotoImage photo={draft.avatarPreview || catFive} alt="Avatar profilo" />
+        <div>
+          <strong>{draft.username || currentUser.email}</strong>
+          <small>{currentUser.email}</small>
+        </div>
+      </div>
+      <label>
+        Nome utente
+        <input value={draft.username} onChange={updateUsername} placeholder="nome utente" />
+      </label>
+      <div className="avatar-picker">
+        <span>Avatar predefiniti</span>
+        <div className="avatar-choice-grid">
+          {avatarPresets.map((preset) => (
+            <button
+              type="button"
+              key={preset.id}
+              className={draft.avatarUrl === preset.id ? "avatar-choice selected" : "avatar-choice"}
+              onClick={() => selectPreset(preset)}
+              aria-label={preset.label}
+            >
+              <PhotoImage photo={preset.photo} alt="" />
+            </button>
+          ))}
+        </div>
+      </div>
+      <label className="custom-avatar">
+        <span>Avatar personalizzato</span>
+        <input type="file" accept="image/*" onChange={uploadAvatar} />
+      </label>
+      <button className="primary" disabled={isSaving}>
+        {isSaving ? "Salvo..." : "Salva profilo"}
+      </button>
+      {authStatus && <p className="auth-status">{authStatus}</p>}
+    </form>
   );
 }
 
