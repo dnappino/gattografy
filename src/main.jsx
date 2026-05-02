@@ -1083,19 +1083,29 @@ function App() {
         {activeSection === "Colonie" && (
           <ColoniesSection
             colonies={colonies}
+            selected={selected}
             selectedId={selectedId}
             dataStatus={dataStatus}
             isDataBusy={isDataBusy}
             isAuthenticated={isAuthenticated}
+            canEdit={canEditSelected}
             onRequireAuth={() => {
               setAuthMode("login");
               setRegisterOpen(true);
             }}
-            onSelect={(id) => {
-              setSelectedId(id);
-              setActiveSection("Mappa");
-            }}
+            onSelect={setSelectedId}
             onCreateColony={createColony}
+            participationRequests={participationRequests.filter(
+              (request) => request.colonyId === selected.id,
+            )}
+            onToggleAsl={toggleAslDeclared}
+            onReplaceAdmin={replaceColonyAdmin}
+            onApproveParticipation={approveParticipation}
+            onUpdateColony={updateColony}
+            cats={visibleCats}
+            onSaveCat={saveCat}
+            helpReports={helpReports}
+            onCreateHelpRequest={createHelpRequest}
           />
         )}
         {activeSection === "Gatti" && (
@@ -1402,33 +1412,15 @@ function ColonyList({ colonies, selectedId, onSelect }) {
 
 function DetailPanel({
   selected,
-  onAddCat,
-  onReportKitten,
-  comments,
-  draft,
-  setDraft,
-  addComment,
-  participationRequests,
-  friendRequests,
-  messages,
-  messageDraft,
-  setMessageDraft,
-  onToggleAsl,
-  onReplaceAdmin,
-  onApproveParticipation,
-  onAcceptFriend,
-  onSendMessage,
   isAuthenticated,
-  canEdit,
   onRequireAuth,
-  onUpdateColony,
   cats,
-  onSaveCat,
   helpReports,
-  onCreateHelpRequest,
 }) {
+  const openHelp = helpReports.filter((report) => report.colonyId === selected.id).slice(0, 2);
+
   return (
-    <aside className="detail-panel">
+    <aside className="detail-panel compact-detail">
       <div className="detail-title">
         <span className="pin-badge">
           <MapPin size={20} />
@@ -1436,114 +1428,41 @@ function DetailPanel({
         <div>
           <h1>{selected.name}</h1>
           <p>{selected.zone}</p>
-          <a href="https://maps.google.com" target="_blank" rel="noreferrer">
+          <a href={`https://www.google.com/maps?q=${selected.lat},${selected.lng}`} target="_blank" rel="noreferrer">
             Apri in Google Maps
           </a>
         </div>
         <button className="status-button">{selected.status}</button>
       </div>
-      <div className="facts">
-        <Fact icon={ShieldCheck} label="Amministratore colonia" value={selected.admin} />
-        <Fact icon={Users} label="Referente" value={selected.caretaker} />
-        <Fact icon={Clock3} label="Ultimo aggiornamento" value={selected.updated} />
-        <Fact icon={Cat} label="Gatti censiti" value={selected.cats} />
-        <Fact icon={PawPrint} label="Cucciolate (2026)" value={selected.kittens} />
-        <Fact
-          icon={ShieldCheck}
-          label="Dichiarata all'ASL"
-          value={selected.aslDeclared ? "Sì" : "No"}
-        />
+      <div className="quick-facts">
+        <Fact icon={Cat} label="Gatti" value={selected.cats} />
+        <Fact icon={PawPrint} label="Cucciolate" value={selected.kittens} />
+        <Fact icon={ShieldCheck} label="ASL" value={selected.aslDeclared ? "S?" : "No"} />
+        <Fact icon={Users} label="Admin" value={selected.admin} />
       </div>
-      {!isAuthenticated && <PublicReadOnlyNotice onRequireAuth={onRequireAuth} />}
-      {canEdit && (
-        <>
-          <AdminPanel
-            selected={selected}
-            participationRequests={participationRequests}
-            onToggleAsl={onToggleAsl}
-            onReplaceAdmin={onReplaceAdmin}
-            onApproveParticipation={onApproveParticipation}
-          />
-          <ColonyEditPanel selected={selected} onUpdateColony={onUpdateColony} />
-        </>
-      )}
-      <HelpFeed reports={helpReports} selected={selected} canEdit={canEdit} onCreateHelpRequest={onCreateHelpRequest} />
-      <SanitaryPanel selected={selected} />
-      <MediaStrip photos={selected.photos} title="Foto della colonia" />
-      <section className="cats-section">
-        <div className="section-title">
-          <h2>Gatti della colonia ({selected.cats})</h2>
-          <button>Vedi tutti</button>
+      <section className="mini-panel">
+        <div className="section-title compact">
+          <h2>Richieste di aiuto</h2>
         </div>
-        {cats.length > 0 ? (
-          <div className="cat-cards">
-            {cats.map((cat) => (
-              <article className="cat-card" key={cat.id}>
-                <PhotoImage photo={cat.photo} alt={cat.name} />
-                <strong>{cat.name}</strong>
-                <span>{cat.sex}</span>
-                <small>{cat.notes || cat.status}</small>
-                <ShieldCheck size={18} />
-              </article>
-            ))}
-          </div>
+        {openHelp.length ? (
+          openHelp.map((report) => (
+            <article className={`report-card ${report.tone}`} key={report.id}>
+              <span>{report.type === "rescue" ? "Soccorso" : "Problema"}</span>
+              <strong>{report.title}</strong>
+            </article>
+          ))
         ) : (
-          <div className="empty-state">
-            <Cat size={26} />
-            <strong>Nessun gatto censito</strong>
-            {canEdit && <span>Usa Aggiungi un gatto per iniziare.</span>}
-          </div>
+          <p className="empty-copy">Nessuna richiesta aperta.</p>
         )}
       </section>
-      {canEdit && cats.length > 0 && <CatEditPanel cat={cats[0]} onSaveCat={onSaveCat} />}
-      {canEdit && (
-        <section className="actions">
-          <ActionButton icon={Cat} label="Aggiungi un gatto" onClick={onAddCat} />
-          <ActionButton icon={Eye} label="Segnala avvistamento" tone="blue" />
-          <ActionButton icon={PawPrint} label="Segnala cucciolata" tone="orange" onClick={onReportKitten} />
-          <ActionButton icon={HeartHandshake} label="Richiedi aiuto o recupero" tone="red" />
-        </section>
-      )}
-      {isAuthenticated && (
-        <SocialPanel
-          friendRequests={friendRequests}
-          messages={messages}
-          messageDraft={messageDraft}
-          setMessageDraft={setMessageDraft}
-          onAcceptFriend={onAcceptFriend}
-          onSendMessage={onSendMessage}
-        />
-      )}
-      <section className="comments">
-        <h2>Commenti e aggiornamenti</h2>
-        {isAuthenticated && (
-          <div className="comment-input">
-            <PhotoImage photo={catPhotos[4]} alt="" />
-            <input
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              onKeyDown={(event) => event.key === "Enter" && addComment()}
-              placeholder="Scrivi un commento o un aggiornamento..."
-            />
-            <button aria-label="Carica foto">
-              <Camera size={17} />
-            </button>
-            <button onClick={addComment}>Invia</button>
-          </div>
-        )}
-        {!comments.length && <p className="empty-copy">Nessun commento pubblicato.</p>}
-        {comments.map((comment, index) => (
-          <article className="comment" key={`${comment}-${index}`}>
-            <PhotoImage photo={index === 0 ? catPhotos[4] : catPhotos[0]} alt="" />
-            <div>
-              <strong>Utente</strong>
-              <span>{index === 0 ? "adesso" : "oggi"}</span>
-              <p>{comment}</p>
-              <button>Rispondi</button>
-            </div>
-          </article>
-        ))}
+      <section className="mini-panel">
+        <div className="section-title compact">
+          <h2>Gatti censiti</h2>
+          <span>{cats.length || selected.cats}</span>
+        </div>
+        <MediaStrip photos={selected.photos.slice(0, 3)} title="Foto" />
       </section>
+      {!isAuthenticated && <PublicReadOnlyNotice onRequireAuth={onRequireAuth} />}
     </aside>
   );
 }
@@ -2142,13 +2061,24 @@ function SocialPanel({
 
 function ColoniesSection({
   colonies,
+  selected,
   selectedId,
   dataStatus,
   isDataBusy,
   isAuthenticated,
+  canEdit,
   onRequireAuth,
   onSelect,
   onCreateColony,
+  participationRequests,
+  onToggleAsl,
+  onReplaceAdmin,
+  onApproveParticipation,
+  onUpdateColony,
+  cats,
+  onSaveCat,
+  helpReports,
+  onCreateHelpRequest,
 }) {
   const [isCreating, setCreating] = useState(false);
   const [newColony, setNewColony] = useState({
@@ -2391,10 +2321,109 @@ function ColoniesSection({
               {colony.aslDeclared ? "ASL sì" : "ASL no"}
             </span>
             <span>{colony.cats}</span>
-            <button onClick={() => onSelect(colony.id)}>Apri</button>
+            <button onClick={() => onSelect(colony.id)}>
+              {colony.id === selectedId ? "Aperta" : "Apri"}
+            </button>
           </div>
         ))}
       </div>
+      <ColonyFullPanel
+        selected={selected}
+        isAuthenticated={isAuthenticated}
+        canEdit={canEdit}
+        onRequireAuth={onRequireAuth}
+        participationRequests={participationRequests}
+        onToggleAsl={onToggleAsl}
+        onReplaceAdmin={onReplaceAdmin}
+        onApproveParticipation={onApproveParticipation}
+        onUpdateColony={onUpdateColony}
+        cats={cats}
+        onSaveCat={onSaveCat}
+        helpReports={helpReports}
+        onCreateHelpRequest={onCreateHelpRequest}
+      />
+    </section>
+  );
+}
+
+function ColonyFullPanel({
+  selected,
+  isAuthenticated,
+  canEdit,
+  onRequireAuth,
+  participationRequests,
+  onToggleAsl,
+  onReplaceAdmin,
+  onApproveParticipation,
+  onUpdateColony,
+  cats,
+  onSaveCat,
+  helpReports,
+  onCreateHelpRequest,
+}) {
+  return (
+    <section className="colony-full-panel">
+      <div className="detail-title">
+        <span className="pin-badge">
+          <MapPin size={20} />
+        </span>
+        <div>
+          <h1>{selected.name}</h1>
+          <p>{selected.zone}</p>
+          <a href={`https://www.google.com/maps?q=${selected.lat},${selected.lng}`} target="_blank" rel="noreferrer">
+            Apri in Google Maps
+          </a>
+        </div>
+        <button className="status-button">{selected.status}</button>
+      </div>
+      <div className="facts">
+        <Fact icon={ShieldCheck} label="Amministratore colonia" value={selected.admin} />
+        <Fact icon={Users} label="Referente" value={selected.caretaker} />
+        <Fact icon={Clock3} label="Ultimo aggiornamento" value={selected.updated} />
+        <Fact icon={Cat} label="Gatti censiti" value={selected.cats} />
+        <Fact icon={PawPrint} label="Cucciolate (2026)" value={selected.kittens} />
+        <Fact icon={ShieldCheck} label="Dichiarata all'ASL" value={selected.aslDeclared ? "Sì" : "No"} />
+      </div>
+      {!isAuthenticated && <PublicReadOnlyNotice onRequireAuth={onRequireAuth} />}
+      {canEdit && (
+        <>
+          <AdminPanel
+            selected={selected}
+            participationRequests={participationRequests}
+            onToggleAsl={onToggleAsl}
+            onReplaceAdmin={onReplaceAdmin}
+            onApproveParticipation={onApproveParticipation}
+          />
+          <ColonyEditPanel selected={selected} onUpdateColony={onUpdateColony} />
+        </>
+      )}
+      <HelpFeed reports={helpReports} selected={selected} canEdit={canEdit} onCreateHelpRequest={onCreateHelpRequest} />
+      <SanitaryPanel selected={selected} />
+      <MediaStrip photos={selected.photos} title="Foto della colonia" />
+      <section className="cats-section">
+        <div className="section-title">
+          <h2>Gatti della colonia ({cats.length || selected.cats})</h2>
+        </div>
+        {cats.length > 0 ? (
+          <div className="cat-cards">
+            {cats.map((cat) => (
+              <article className="cat-card" key={cat.id}>
+                <PhotoImage photo={cat.photo} alt={cat.name} />
+                <strong>{cat.name}</strong>
+                <span>{cat.sex}</span>
+                <small>{cat.notes || cat.status}</small>
+                <ShieldCheck size={18} />
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="empty-state">
+            <Cat size={26} />
+            <strong>Nessun gatto censito</strong>
+          </div>
+        )}
+      </section>
+      {canEdit && cats.length > 0 && <CatEditPanel cat={cats[0]} onSaveCat={onSaveCat} />}
     </section>
   );
 }
@@ -2420,7 +2449,7 @@ function CatsSection({ colonies, catsByColony, canEdit, onSaveCat }) {
             <PhotoImage photo={cat.photo} alt={cat.name} />
             <div>
               <strong>{cat.name}</strong>
-              <span>{cat.sex || "Sesso da verificare"} ? {cat.notes || cat.status || "Scheda aperta"}</span>
+              <span>{cat.sex || "Sesso da verificare"} · {cat.notes || cat.status || "Scheda aperta"}</span>
               <small>{cat.colony}</small>
               <em>Ultimo avvistamento: {cat.lastSeen}</em>
             </div>
