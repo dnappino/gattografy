@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { DivIcon } from "leaflet";
-import { MapContainer, Marker, Popup, TileLayer, useMap } from "react-leaflet";
+import { MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import {
   Bell,
   Camera,
@@ -208,6 +208,19 @@ function MapFlyTo({ selected }) {
   return null;
 }
 
+function MapBoundsTracker({ onBoundsChange }) {
+  const map = useMapEvents({
+    moveend: () => onBoundsChange(map.getBounds()),
+    zoomend: () => onBoundsChange(map.getBounds()),
+  });
+
+  useEffect(() => {
+    onBoundsChange(map.getBounds());
+  }, [map, onBoundsChange]);
+
+  return null;
+}
+
 function mapDbColony(row, index = 0) {
   const city = row.city ? ` - ${row.city}` : "";
   const adminProfile = row.admin_profile ?? row.profiles ?? null;
@@ -264,8 +277,9 @@ function mapDbReports(rows, colonyList) {
       status: row.status,
       title: row.title,
       description: row.description ?? "",
+      author: row.author?.username ?? "",
       createdAt: row.created_at,
-      tone: row.type === "rescue" ? "red" : row.type === "birth" ? "orange" : "blue",
+      tone: row.type === "rescue" ? "red" : row.type === "birth" ? "orange" : row.type === "problem" ? "orange" : "blue",
     };
   });
 }
@@ -346,6 +360,8 @@ function App() {
   const [notifications, setNotifications] = useState([]);
   const [isNotificationsOpen, setNotificationsOpen] = useState(false);
   const [messageDraft, setMessageDraft] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [mapBounds, setMapBounds] = useState(null);
   const selected = useMemo(
     () => colonies.find((colony) => colony.id === selectedId) ?? colonies[0],
     [colonies, selectedId],
@@ -365,6 +381,15 @@ function App() {
     Segnalazioni: reports.filter((report) => report.status !== "closed").length,
     Messaggi: privateMessages.length,
   };
+  const filteredColonies = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return colonies;
+    return colonies.filter((colony) =>
+      [colony.name, colony.zone, colony.admin, colony.caretaker, colony.status]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(query)),
+    );
+  }, [colonies, searchQuery]);
 
   useEffect(() => {
     let unsubscribe = null;
@@ -459,7 +484,7 @@ function App() {
 
       const { data: reportRows } = await supabase
         .from("reports")
-        .select("id,colony_id,type,status,title,description,created_at")
+        .select("id,colony_id,type,status,title,description,created_at,author:profiles!reports_created_by_fkey(username)")
         .order("created_at", { ascending: false })
         .limit(40);
       setReports(mapDbReports(reportRows ?? [], mapped));
@@ -479,7 +504,7 @@ function App() {
         await Promise.all([
           supabase
             .from("reports")
-            .select("id,colony_id,type,status,title,description,created_at")
+            .select("id,colony_id,type,status,title,description,created_at,author:profiles!reports_created_by_fkey(username)")
             .eq("colony_id", colonyId)
             .order("created_at", { ascending: false }),
           supabase
@@ -1306,8 +1331,17 @@ function App() {
     return true;
   }
 
-  async function saveCat(catId, patch) {
-    if (!canEditSelected) {
+  async function saveCat(catId, patch, targetColonyId = selected.id) {
+    const targetColony = colonies.find((item) => item.id === targetColonyId) ?? selected;
+    const canEditTarget =
+      isAuthenticated &&
+      (isSiteAdmin ||
+        targetColony.adminId === currentUser?.id ||
+        targetColony.createdBy === currentUser?.id ||
+        targetColony.admin === currentUser?.username ||
+        targetColony.collaborators?.includes(currentUser?.username));
+
+    if (!canEditTarget) {
       setAuthMode("login");
       setRegisterOpen(true);
       return false;
@@ -1325,14 +1359,14 @@ function App() {
     const localCat = {
       ...cleaned,
       id: catId,
-      colonyId: selected.id,
+      colonyId: targetColony.id,
       sterilizationYear: sterilizationYear ?? "",
       photo: localPreview || cleaned.photo || catPlaceholder,
       photoUrl: localPreview || cleaned.photoUrl || "",
     };
     setCatsByColony((items) => ({
       ...items,
-      [selected.id]: (items[selected.id] ?? []).map((cat) =>
+      [targetColony.id]: (items[targetColony.id] ?? []).map((cat) =>
         cat.id === catId ? { ...cat, ...localCat } : cat,
       ),
     }));
@@ -1341,7 +1375,7 @@ function App() {
     if (!supabase || !currentUser?.id) return true;
 
     const payload = {
-      colony_id: selected.id,
+      colony_id: targetColony.id,
       name: cleaned.name,
       sex: cleaned.sex || null,
       status: cleaned.status || null,
@@ -1396,16 +1430,44 @@ function App() {
     const mappedCat = mapDbCat(savedCat);
     setCatsByColony((items) => ({
       ...items,
-      [selected.id]: (items[selected.id] ?? []).map((cat) =>
+      [targetColony.id]: (items[targetColony.id] ?? []).map((cat) =>
         cat.id === catId ? mappedCat : cat,
       ),
     }));
-    await notifyAdmins("new_cat", "Nuovo gatto", `${mappedCat.name} aggiunto a ${selected.name}`);
+    await notifyAdmins("new_cat", "Nuovo gatto", `${mappedCat.name} aggiunto a ${targetColony.name}`);
     return true;
   }
 
+  async function createCatForColony(targetColonyId, patch) {
+    const tempId = `local-${Date.now()}`;
+    const targetColony = colonies.find((item) => item.id === targetColonyId);
+    if (!targetColony) return false;
+
+    setCatsByColony((items) => ({
+      ...items,
+      [targetColonyId]: [
+        {
+          id: tempId,
+          colonyId: targetColonyId,
+          name: patch.name?.trim() || "Nuovo gatto",
+          sex: patch.sex || "",
+          status: patch.status || "Da verificare",
+          notes: patch.notes || "",
+          photo: patch.photoPreview || catPlaceholder,
+        },
+        ...(items[targetColonyId] ?? []),
+      ],
+    }));
+    setColonies((items) =>
+      items.map((item) =>
+        item.id === targetColonyId ? { ...item, cats: item.cats + 1, updated: "adesso" } : item,
+      ),
+    );
+    return saveCat(tempId, patch, targetColonyId);
+  }
+
   async function createHelpRequest(payload) {
-    if (!canEditSelected) {
+    if (!isAuthenticated) {
       setAuthMode("login");
       setRegisterOpen(true);
       return false;
@@ -1419,7 +1481,7 @@ function App() {
       status: "open",
       title: payload.title.trim(),
       description: payload.description.trim(),
-      tone: payload.type === "rescue" ? "red" : "blue",
+      tone: payload.type === "rescue" ? "red" : payload.type === "problem" || payload.type === "birth" ? "orange" : "blue",
       createdAt: new Date().toISOString(),
     };
     if (!report.title) return false;
@@ -1438,14 +1500,16 @@ function App() {
         description: report.description || null,
         created_by: currentUser.id,
       })
-      .select("id,colony_id,type,status,title,description,created_at")
+      .select("id,colony_id,type,status,title,description,created_at,author:profiles!reports_created_by_fkey(username)")
       .single();
     if (error) {
       setDataStatus(`Errore richiesta aiuto: ${error.message}`);
       return false;
     }
     setReports((items) => [mapDbReports([data], colonies)[0], ...items.filter((item) => item.id !== report.id)]);
-    await notifyAdmins("rescue_request", "Richiesta di soccorso", `${report.title} - ${report.colony}`);
+    if (report.type === "rescue") {
+      await notifyAdmins("rescue_request", "Richiesta di soccorso", `${report.title} - ${report.colony}`);
+    }
     return true;
   }
 
@@ -1459,15 +1523,23 @@ function App() {
           notifications={notifications}
           isNotificationsOpen={isNotificationsOpen}
           setNotificationsOpen={setNotificationsOpen}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
           onOpenAuth={() => setRegisterOpen(true)}
           onLogout={signOut}
         />
         {activeSection === "Mappa" && (
           <MapSection
-            colonies={colonies}
+            colonies={filteredColonies}
             selected={selected}
             selectedId={selectedId}
+            mapBounds={mapBounds}
+            onBoundsChange={setMapBounds}
             onSelect={setSelectedId}
+            onOpenColony={(id) => {
+              setSelectedId(id);
+              setActiveSection("Colonie");
+            }}
             onAddCat={addCat}
             onReportKitten={reportKitten}
             comments={comments}
@@ -1496,12 +1568,13 @@ function App() {
             cats={visibleCats}
             onSaveCat={saveCat}
             helpReports={helpReports}
+            reports={reports}
             onCreateHelpRequest={createHelpRequest}
           />
         )}
         {activeSection === "Colonie" && (
           <ColoniesSection
-            colonies={colonies}
+            colonies={filteredColonies}
             selected={selected}
             selectedId={selectedId}
             dataStatus={dataStatus}
@@ -1525,6 +1598,10 @@ function App() {
             onSaveCat={saveCat}
             helpReports={helpReports}
             onCreateHelpRequest={createHelpRequest}
+            comments={comments}
+            draft={draft}
+            setDraft={setDraft}
+            addComment={addComment}
           />
         )}
         {activeSection === "Gatti" && (
@@ -1533,6 +1610,7 @@ function App() {
             catsByColony={catsByColony}
             canEdit={canEditSelected}
             onSaveCat={saveCat}
+            onCreateCat={createCatForColony}
           />
         )}
         {activeSection === "Segnalazioni" && (
@@ -1542,6 +1620,11 @@ function App() {
             canEdit={canEditSelected}
             selected={selected}
             onCreateHelpRequest={createHelpRequest}
+            isAuthenticated={isAuthenticated}
+            onRequireAuth={() => {
+              setAuthMode("login");
+              setRegisterOpen(true);
+            }}
           />
         )}
         {activeSection === "Messaggi" && isAuthenticated && (
@@ -1638,14 +1721,18 @@ function Sidebar({ activeSection, onSectionChange, counts }) {
   );
 }
 
-function Topbar({ currentUser, isAuthenticated, notifications, isNotificationsOpen, setNotificationsOpen, onOpenAuth, onLogout }) {
+function Topbar({ currentUser, isAuthenticated, notifications, isNotificationsOpen, setNotificationsOpen, searchQuery, setSearchQuery, onOpenAuth, onLogout }) {
   const unreadCount = notifications.filter((item) => !item.read).length;
 
   return (
     <header className="topbar">
       <label className="search-box">
         <Search size={18} />
-        <input placeholder="Cerca colonie, zone, gatti..." />
+        <input
+          value={searchQuery}
+          onChange={(event) => setSearchQuery(event.target.value)}
+          placeholder="Cerca colonie, zone, gatti..."
+        />
         <kbd>⌘K</kbd>
       </label>
       <div className="account">
@@ -1703,7 +1790,10 @@ function MapSection({
   colonies,
   selected,
   selectedId,
+  mapBounds,
+  onBoundsChange,
   onSelect,
+  onOpenColony,
   onAddCat,
   onReportKitten,
   comments,
@@ -1727,13 +1817,25 @@ function MapSection({
   cats,
   onSaveCat,
   helpReports,
+  reports,
   onCreateHelpRequest,
 }) {
+  const visibleColonies = mapBounds
+    ? colonies.filter((colony) => mapBounds.contains([colony.lat, colony.lng]))
+    : colonies;
+
   return (
     <div className="content-grid">
       <section className="map-column" aria-label="Mappa delle colonie">
-        <MapCanvas colonies={colonies} selectedId={selectedId} onSelect={onSelect} />
-        <ColonyList colonies={colonies} selectedId={selectedId} onSelect={onSelect} />
+        <MapCanvas
+          colonies={colonies}
+          selectedId={selectedId}
+          onSelect={onSelect}
+          onOpenColony={onOpenColony}
+          onBoundsChange={onBoundsChange}
+        />
+        <OpenReportsFeed reports={reports} />
+        <ColonyList colonies={visibleColonies} selectedId={selectedId} onSelect={onSelect} />
       </section>
       <DetailPanel
         selected={selected}
@@ -1766,8 +1868,16 @@ function MapSection({
   );
 }
 
-function MapCanvas({ colonies, selectedId, onSelect }) {
+function MapCanvas({ colonies, selectedId, onSelect, onOpenColony, onBoundsChange }) {
   const selected = colonies.find((colony) => colony.id === selectedId) ?? colonies[0];
+  if (!selected) {
+    return (
+      <div className="map-canvas empty-state">
+        <MapPin size={26} />
+        <strong>Nessuna colonia trovata</strong>
+      </div>
+    );
+  }
 
   return (
     <div className="map-canvas">
@@ -1786,6 +1896,7 @@ function MapCanvas({ colonies, selectedId, onSelect }) {
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
         <MapFlyTo selected={selected} />
+        <MapBoundsTracker onBoundsChange={onBoundsChange} />
         {colonies.map((colony) => (
           <Marker
             key={colony.id}
@@ -1796,7 +1907,7 @@ function MapCanvas({ colonies, selectedId, onSelect }) {
             <Popup>
               <strong>{colony.name}</strong>
               <span>{colony.zone}</span>
-              <button onClick={() => onSelect(colony.id)}>Apri scheda</button>
+              <button onClick={() => onOpenColony(colony.id)}>Apri scheda</button>
             </Popup>
           </Marker>
         ))}
@@ -1851,6 +1962,35 @@ function ColonyList({ colonies, selectedId, onSelect }) {
   );
 }
 
+function OpenReportsFeed({ reports }) {
+  const openReports = reports.filter((report) => report.status !== "closed").slice(0, 6);
+
+  return (
+    <section className="open-reports-feed">
+      <div className="section-title compact">
+        <h2>Segnalazioni aperte</h2>
+      </div>
+      <div className="feed-strip">
+        {openReports.map((report) => (
+          <article className={`report-card ${report.tone}`} key={report.id}>
+            <span>{reportTypeLabel(report.type)}</span>
+            <strong>{report.title}</strong>
+            <small>{report.colony}{report.author ? ` · ${report.author}` : ""}</small>
+          </article>
+        ))}
+        {!openReports.length && <p className="empty-copy">Nessuna segnalazione aperta.</p>}
+      </div>
+    </section>
+  );
+}
+
+function reportTypeLabel(type) {
+  if (type === "rescue") return "Soccorso";
+  if (type === "birth") return "Cucciolata";
+  if (type === "problem") return "Problema";
+  return "Avvistamento";
+}
+
 function DetailPanel({
   selected,
   isAuthenticated,
@@ -1878,7 +2018,7 @@ function DetailPanel({
       <div className="quick-facts">
         <Fact icon={Cat} label="Gatti" value={selected.cats} />
         <Fact icon={PawPrint} label="Cucciolate" value={selected.kittens} />
-        <Fact icon={ShieldCheck} label="ASL" value={selected.aslDeclared ? "S?" : "No"} />
+        <Fact icon={ShieldCheck} label="ASL" value={selected.aslDeclared ? "Sì" : "No"} />
         <Fact icon={Users} label="Admin" value={selected.admin} />
       </div>
       <section className="mini-panel">
@@ -2552,6 +2692,10 @@ function ColoniesSection({
   onSaveCat,
   helpReports,
   onCreateHelpRequest,
+  comments,
+  draft,
+  setDraft,
+  addComment,
 }) {
   const [isCreating, setCreating] = useState(false);
   const [newColony, setNewColony] = useState({
@@ -2987,7 +3131,108 @@ function ColonyDiscussionPanel({ isAuthenticated, comments, draft, setDraft, add
   );
 }
 
-function CatsSection({ colonies, catsByColony, canEdit, onSaveCat }) {
+function CatCreatePanel({ colonies, onCreateCat, onDone }) {
+  const [draft, setDraft] = useState({
+    colonyId: colonies[0]?.id ?? "",
+    name: "",
+    sex: "",
+    status: "Da verificare",
+    notes: "",
+    sterilized: "",
+    sterilizationDate: "",
+    earTip: false,
+    provenance: "",
+    description: "",
+    approximateBirthDate: "",
+    photoFile: null,
+    photoPreview: "",
+  });
+  const [status, setStatus] = useState("");
+
+  const updateField = (field) => (event) => {
+    const { type, checked, value } = event.target;
+    setDraft((current) => ({ ...current, [field]: type === "checkbox" ? checked : value }));
+  };
+  const updatePhoto = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setDraft((current) => ({
+      ...current,
+      photoFile: file,
+      photoPreview: URL.createObjectURL(file),
+    }));
+  };
+
+  async function submit(event) {
+    event.preventDefault();
+    const created = await onCreateCat(draft.colonyId, draft);
+    if (!created) {
+      setStatus("Creazione non riuscita.");
+      return;
+    }
+    setStatus("Gatto creato.");
+    onDone();
+  }
+
+  return (
+    <form className="edit-panel" onSubmit={submit}>
+      <div className="section-title compact">
+        <h2>Nuovo gatto</h2>
+      </div>
+      <div className="edit-grid">
+        <label className="photo-field">
+          Foto gatto
+          <PhotoImage photo={draft.photoPreview || catPlaceholder} alt="Foto gatto" />
+          <input type="file" accept="image/*" onChange={updatePhoto} />
+        </label>
+        <label>
+          Colonia
+          <select value={draft.colonyId} onChange={updateField("colonyId")}>
+            {colonies.map((colony) => (
+              <option key={colony.id} value={colony.id}>{colony.name}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Nome
+          <input value={draft.name} onChange={updateField("name")} />
+        </label>
+        <label>
+          Sesso
+          <select value={draft.sex} onChange={updateField("sex")}>
+            <option value="">Da verificare</option>
+            <option>Maschio</option>
+            <option>Femmina</option>
+          </select>
+        </label>
+        <label>
+          Stato
+          <input value={draft.status} onChange={updateField("status")} />
+        </label>
+        <label>
+          Data sterilizzazione
+          <input type="date" value={draft.sterilizationDate} onChange={updateField("sterilizationDate")} />
+        </label>
+        <label className="inline-check">
+          <input type="checkbox" checked={draft.sterilized === true} onChange={(event) => setDraft((current) => ({ ...current, sterilized: event.target.checked }))} />
+          Sterilizzato
+        </label>
+        <label className="inline-check">
+          <input type="checkbox" checked={draft.earTip} onChange={updateField("earTip")} />
+          Taglio padiglione
+        </label>
+        <label className="wide-field">
+          Note
+          <textarea value={draft.notes} onChange={updateField("notes")} />
+        </label>
+      </div>
+      {status && <p className="form-note">{status}</p>}
+      <button className="primary">Salva gatto</button>
+    </form>
+  );
+}
+
+function CatsSection({ colonies, catsByColony, canEdit, onSaveCat, onCreateCat }) {
   const registryCats = colonies.flatMap((colony) =>
     (catsByColony[colony.id] ?? []).map((cat, index) => ({
       ...cat,
@@ -2998,10 +3243,22 @@ function CatsSection({ colonies, catsByColony, canEdit, onSaveCat }) {
     })),
   );
   const [editingCat, setEditingCat] = useState(null);
+  const [isCreating, setCreating] = useState(false);
 
   return (
     <section className="page-section">
-      <PageHeader title="Gatti" action="Aggiungi gatto" />
+      <PageHeader
+        title="Gatti"
+        action="Aggiungi gatto"
+        onAction={() => setCreating((value) => !value)}
+      />
+      {isCreating && (
+        <CatCreatePanel
+          colonies={colonies}
+          onCreateCat={onCreateCat}
+          onDone={() => setCreating(false)}
+        />
+      )}
       <div className="registry-grid">
         {registryCats.map((cat) => (
           <article className="registry-card" key={cat.id}>
@@ -3022,22 +3279,71 @@ function CatsSection({ colonies, catsByColony, canEdit, onSaveCat }) {
   );
 }
 
-function ReportsSection({ colonies, reports, canEdit, selected, onCreateHelpRequest }) {
+function ReportsSection({ colonies, reports, canEdit, selected, onCreateHelpRequest, isAuthenticated, onRequireAuth }) {
   const columns = [
     ["open", "Aperta"],
     ["checking", "Da verificare"],
     ["in_progress", "In corso"],
   ];
+  const [isCreating, setCreating] = useState(false);
+  const [draft, setDraft] = useState({
+    colonyId: selected.id,
+    type: "sighting",
+    title: "",
+    description: "",
+  });
+  useEffect(() => {
+    setDraft((current) => ({ ...current, colonyId: selected.id }));
+  }, [selected.id]);
+
+  const updateField = (field) => (event) =>
+    setDraft((current) => ({ ...current, [field]: event.target.value }));
+
+  async function submit(event) {
+    event.preventDefault();
+    const created = await onCreateHelpRequest(draft);
+    if (!created) return;
+    setDraft({ colonyId: selected.id, type: "sighting", title: "", description: "" });
+    setCreating(false);
+  }
 
   return (
     <section className="page-section">
-      <PageHeader title="Segnalazioni" action="Nuova segnalazione" />
-      <HelpFeed
-        reports={reports.filter((report) => report.type === "rescue" || report.type === "problem")}
-        selected={selected}
-        canEdit={canEdit}
-        onCreateHelpRequest={onCreateHelpRequest}
+      <PageHeader
+        title="Segnalazioni"
+        action="Nuova segnalazione"
+        onAction={() => (isAuthenticated ? setCreating((value) => !value) : onRequireAuth())}
       />
+      {isCreating && (
+        <form className="create-panel" onSubmit={submit}>
+          <label>
+            Colonia
+            <select value={draft.colonyId} onChange={updateField("colonyId")}>
+              {colonies.map((colony) => (
+                <option key={colony.id} value={colony.id}>{colony.name}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Tipo
+            <select value={draft.type} onChange={updateField("type")}>
+              <option value="sighting">Avvistamento</option>
+              <option value="birth">Cucciolata</option>
+              <option value="problem">Problema</option>
+              <option value="rescue">Soccorso</option>
+            </select>
+          </label>
+          <label>
+            Titolo
+            <input value={draft.title} onChange={updateField("title")} />
+          </label>
+          <label className="wide-field">
+            Dettagli
+            <textarea value={draft.description} onChange={updateField("description")} />
+          </label>
+          <button className="primary">Salva segnalazione</button>
+        </form>
+      )}
       <div className="kanban-grid">
         {columns.map(([status, label]) => (
           <div className="kanban-column" key={status}>
@@ -3046,7 +3352,7 @@ function ReportsSection({ colonies, reports, canEdit, selected, onCreateHelpRequ
               .filter((report) => report.status === status)
               .map((report) => (
                 <article className={`report-card ${report.tone}`} key={report.id}>
-                  <span>{report.type === "rescue" ? "Soccorso" : report.type === "birth" ? "Cucciolata" : "Segnalazione"}</span>
+                  <span>{reportTypeLabel(report.type)}</span>
                   <strong>{report.title}</strong>
                   <small>{report.colony}</small>
                   {canEdit && <button>Gestisci</button>}

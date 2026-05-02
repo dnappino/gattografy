@@ -945,6 +945,24 @@ kbd {
   box-shadow: var(--small-shadow);
 }
 
+.open-reports-feed {
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  box-shadow: var(--small-shadow);
+}
+
+.feed-strip {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(220px, 1fr);
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
 .list-heading,
 .section-title {
   display: flex;
