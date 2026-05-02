@@ -51,13 +51,13 @@ const catPhotos = [
 const catPlaceholder =
   "data:image/svg+xml;utf8," +
   encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240"><rect width="240" height="240" rx="18" fill="#dff1e6"/><path d="M68 94 82 44l34 34h8l34-34 14 50c22 15 35 40 35 69 0 42-35 73-87 73s-87-31-87-73c0-29 13-54 35-69Z" fill="#236b53"/><circle cx="91" cy="139" r="12" fill="#fff"/><circle cx="149" cy="139" r="12" fill="#fff"/><path d="M114 164h12l-6 7Z" fill="#e46755"/><path d="M95 181c15 12 35 12 50 0" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round"/></svg>',
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240"><rect width="240" height="240" rx="20" fill="#f7fbf8"/><circle cx="120" cy="126" r="72" fill="#e1f1e8"/><path d="M72 102 83 58l31 30h12l31-30 11 44c17 13 27 34 27 58 0 36-30 62-75 62s-75-26-75-62c0-24 10-45 27-58Z" fill="#2f7a5f"/><circle cx="94" cy="140" r="11" fill="#fff"/><circle cx="146" cy="140" r="11" fill="#fff"/><circle cx="98" cy="140" r="5" fill="#153f33"/><circle cx="142" cy="140" r="5" fill="#153f33"/><path d="M114 163h12l-6 8Z" fill="#e67869"/><path d="M98 182c14 10 30 10 44 0" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round"/><path d="M52 205h136" stroke="#c9ded2" stroke-width="6" stroke-linecap="round"/></svg>',
   );
 
 const colonyPlaceholder =
   "data:image/svg+xml;utf8," +
   encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240"><rect width="240" height="240" rx="18" fill="#e0edf6"/><path d="M120 214s70-56 70-122a70 70 0 0 0-140 0c0 66 70 122 70 122Z" fill="#386e9a"/><circle cx="120" cy="92" r="28" fill="#fff"/><path d="M120 46v92" stroke="#dff1e6" stroke-width="10" stroke-linecap="round"/><path d="M74 92h92" stroke="#dff1e6" stroke-width="10" stroke-linecap="round"/></svg>',
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240"><rect width="240" height="240" rx="20" fill="#f6fafc"/><circle cx="120" cy="112" r="74" fill="#e4eef6"/><path d="M120 206s58-48 58-104a58 58 0 0 0-116 0c0 56 58 104 58 104Z" fill="#3d789f"/><circle cx="120" cy="102" r="24" fill="#fff"/><path d="M94 101h52" stroke="#d9ebdf" stroke-width="9" stroke-linecap="round"/><path d="M120 75v52" stroke="#d9ebdf" stroke-width="9" stroke-linecap="round"/><path d="M66 211h108" stroke="#c8dbe7" stroke-width="6" stroke-linecap="round"/></svg>',
   );
 
 const seedColonies = [
@@ -349,6 +349,12 @@ function nearestColonyId(colonies, position, fallbackId) {
   ).id;
 }
 
+function shouldShowDataBanner(status, isBusy) {
+  if (isBusy) return true;
+  if (!status) return false;
+  return status.startsWith("Errore") || status.startsWith("Supabase collegato");
+}
+
 async function uploadPublicImage(supabase, bucket, file, folder) {
   if (!file) return "";
   const extension = file.name?.split(".").pop() || "jpg";
@@ -528,7 +534,7 @@ function App() {
       const mapped = data.map(mapDbColony);
       setColonies(mapped);
       setSelectedId(mapped[0].id);
-      setDataStatus(`Caricate ${mapped.length} colonie da Supabase.`);
+      setDataStatus("");
 
       const { data: reportRows } = await supabase
         .from("reports")
@@ -3072,9 +3078,11 @@ function ColoniesSection({
         action="Nuova colonia"
         onAction={() => (isAuthenticated ? setCreating((value) => !value) : onRequireAuth())}
       />
-      <div className={isDataBusy ? "data-banner loading" : "data-banner"}>
-        {isDataBusy ? "Sincronizzazione dati..." : dataStatus}
-      </div>
+      {shouldShowDataBanner(dataStatus, isDataBusy) && (
+        <div className={isDataBusy ? "data-banner loading" : "data-banner"}>
+          {isDataBusy ? "Sincronizzazione dati..." : dataStatus}
+        </div>
+      )}
       {isCreating && (
         <form className="create-panel" onSubmit={submitColony}>
           <label className="photo-field">

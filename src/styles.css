@@ -448,7 +448,7 @@ kbd {
 
 .create-panel {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: 150px repeat(3, minmax(110px, 1fr));
   gap: 12px;
   padding: 16px;
   border: 1px solid var(--line);
@@ -465,12 +465,25 @@ kbd {
   font-weight: 780;
 }
 
-.create-panel input {
+.create-panel input,
+.create-panel select,
+.create-panel textarea {
   min-height: 40px;
   border: 1px solid var(--line);
   border-radius: 7px;
   padding: 0 10px;
   color: var(--ink);
+}
+
+.create-panel input[type="date"],
+.create-panel input[type="number"] {
+  max-width: 150px;
+}
+
+.create-panel textarea {
+  padding: 8px 10px;
+  min-height: 78px;
+  resize: vertical;
 }
 
 .create-panel .inline-check {
@@ -1408,8 +1421,9 @@ select {
 .edit-grid,
 .inline-form {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(4, minmax(96px, 1fr));
+  gap: 10px 12px;
+  align-items: start;
 }
 
 .edit-grid label,
@@ -1428,17 +1442,26 @@ select {
 .inline-form select,
 .inline-form textarea {
   width: 100%;
-  min-height: 38px;
+  min-height: 36px;
   border: 1px solid var(--line);
   border-radius: 7px;
-  padding: 8px 10px;
+  padding: 7px 9px;
   color: var(--ink);
   background: #fff;
 }
 
+.edit-grid input[type="date"],
+.edit-grid input[type="number"] {
+  max-width: 150px;
+}
+
+.edit-grid input[type="number"] {
+  text-align: right;
+}
+
 .edit-grid textarea,
 .inline-form textarea {
-  min-height: 74px;
+  min-height: 82px;
   resize: vertical;
 }
 
@@ -1459,20 +1482,34 @@ select {
 }
 
 .photo-field {
-  grid-row: span 2;
+  grid-row: span 3;
+  align-self: start;
 }
 
 .photo-field img {
-  width: 100%;
+  width: 132px;
+  max-width: 100%;
   aspect-ratio: 1;
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: 8px;
   object-fit: cover;
   background: #f8fcfa;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.75);
 }
 
 .photo-field input {
+  width: min(190px, 100%);
   padding: 7px;
+  font-size: 0.76rem;
+}
+
+.edit-grid .wide-field,
+.inline-form .wide-field {
+  grid-column: span 2;
+}
+
+.edit-grid label:has(textarea) {
+  grid-column: span 2;
 }
 
 .edit-panel > .primary,
