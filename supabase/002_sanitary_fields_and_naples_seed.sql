@@ -62,14 +62,15 @@ begin
 
   select id into admin_id
   from public.profiles
-  where username = 'ilaria_nappino'
+  where username in ('admin', 'site_admin')
+     or role = 'site_admin'
   order by created_at desc
   limit 1;
 
   if admin_id is null then
     select id into admin_id
     from public.profiles
-    where role = 'site_admin'
+    where username = 'ilaria_nappino'
     order by created_at asc
     limit 1;
   end if;
