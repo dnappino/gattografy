@@ -448,7 +448,7 @@ kbd {
 
 .create-panel {
   display: grid;
-  grid-template-columns: 150px repeat(3, minmax(110px, 1fr));
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
   gap: 12px;
   padding: 16px;
   border: 1px solid var(--line);
@@ -458,6 +458,7 @@ kbd {
 }
 
 .create-panel label {
+  min-width: 0;
   display: grid;
   gap: 6px;
   color: var(--muted);
@@ -468,6 +469,8 @@ kbd {
 .create-panel input,
 .create-panel select,
 .create-panel textarea {
+  width: 100%;
+  min-width: 0;
   min-height: 40px;
   border: 1px solid var(--line);
   border-radius: 7px;
@@ -499,6 +502,10 @@ kbd {
 
 .create-panel .primary {
   align-self: end;
+}
+
+.create-panel .photo-field {
+  grid-row: span 2;
 }
 
 .secondary-button {
@@ -1176,7 +1183,7 @@ select {
 
 .colony-row {
   display: grid;
-  grid-template-columns: 58px minmax(120px, 1fr) 56px 74px 66px;
+  grid-template-columns: 58px minmax(120px, 1fr) 56px 74px 66px auto;
   align-items: center;
   gap: 12px;
   width: 100%;
@@ -1186,6 +1193,7 @@ select {
   background: #fff;
   color: var(--ink);
   text-align: left;
+  cursor: pointer;
 }
 
 .colony-row:first-of-type {
@@ -1247,6 +1255,21 @@ select {
 
 .row-updated {
   display: none;
+}
+
+.row-open-button {
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: 7px;
+  background: var(--green);
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.row-open-button:hover {
+  background: #1e5f4a;
 }
 
 .asl-tag {
@@ -1556,7 +1579,7 @@ select {
 .edit-grid,
 .inline-form {
   display: grid;
-  grid-template-columns: repeat(4, minmax(96px, 1fr));
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
   gap: 10px 12px;
   align-items: start;
 }
@@ -2472,7 +2495,7 @@ select {
   }
 
   .colony-row {
-    grid-template-columns: 54px minmax(0, 1fr) 58px;
+    grid-template-columns: 54px minmax(0, 1fr) auto;
   }
 
   .row-stat:nth-of-type(2),

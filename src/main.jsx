@@ -2065,7 +2065,13 @@ function MapSection({
           onBoundsChange={onBoundsChange}
         />
         <OpenReportsFeed reports={reports} />
-        <ColonyList colonies={visibleColonies} selectedId={selectedId} onSelect={onSelect} />
+        <ColonyList
+          colonies={visibleColonies}
+          selectedId={selectedId}
+          onSelect={onSelect}
+          onOpenColony={onOpenColony}
+          isAuthenticated={isAuthenticated}
+        />
       </section>
       <DetailPanel
         selected={selected}
@@ -2149,7 +2155,7 @@ function MapCanvas({ colonies, selectedId, onSelect, onOpenColony, onBoundsChang
   );
 }
 
-function ColonyList({ colonies, selectedId, onSelect }) {
+function ColonyList({ colonies, selectedId, onSelect, onOpenColony, isAuthenticated }) {
   return (
     <section className="colony-list">
       <div className="list-heading">
@@ -2164,10 +2170,15 @@ function ColonyList({ colonies, selectedId, onSelect }) {
         </label>
       </div>
       {colonies.map((colony) => (
-        <button
+        <article
           className={colony.id === selectedId ? "colony-row selected" : "colony-row"}
           onClick={() => onSelect(colony.id)}
           key={colony.id}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") onSelect(colony.id);
+          }}
         >
           <PhotoImage photo={colony.photos[0]} alt="" />
           <span className="row-main">
@@ -2188,8 +2199,20 @@ function ColonyList({ colonies, selectedId, onSelect }) {
           <span className={colony.aslDeclared ? "asl-tag declared" : "asl-tag"}>
             {colony.aslDeclared ? "ASL sì" : "ASL no"}
           </span>
+          {isAuthenticated && (
+            <button
+              className="row-open-button"
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onOpenColony(colony.id);
+              }}
+            >
+              Apri scheda
+            </button>
+          )}
           <span className="row-updated">Aggiornata {colony.updated}</span>
-        </button>
+        </article>
       ))}
     </section>
   );
