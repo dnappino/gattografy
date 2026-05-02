@@ -2252,7 +2252,7 @@ function makeColonyDraft(selected) {
   };
 }
 
-function HelpFeed({ reports, selected, canEdit, onCreateHelpRequest }) {
+function HelpFeed({ reports = [], selected, canEdit, onCreateHelpRequest }) {
   const [isCreating, setCreating] = useState(false);
   const [draft, setDraft] = useState({
     title: "",
@@ -2976,6 +2976,10 @@ function ColoniesSection({
         onSaveCat={onSaveCat}
         helpReports={helpReports}
         onCreateHelpRequest={onCreateHelpRequest}
+        comments={comments}
+        draft={draft}
+        setDraft={setDraft}
+        addComment={addComment}
       />
     </section>
   );
