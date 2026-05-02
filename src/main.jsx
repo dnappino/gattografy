@@ -438,6 +438,11 @@ function App() {
   const visibleCats = catsByColony[selected?.id] ?? [];
   const helpReports = reports.filter((report) => report.type === "rescue" || report.type === "problem" || report.type === "adoption_request");
   const defaultColonyId = nearestColonyId(colonies, userPosition, selected?.id);
+  const pendingCollaborationRequests = participationRequests.filter((request) => {
+    if (request.status !== "In attesa") return false;
+    const colony = colonies.find((item) => item.id === request.colonyId);
+    return isSiteAdmin || colony?.adminId === currentUser?.id || colony?.createdBy === currentUser?.id;
+  });
   const menuCounts = {
     Segnalazioni: reports.filter((report) => report.status !== "closed").length,
     Messaggi: privateMessages.length,
@@ -664,14 +669,20 @@ function App() {
         text: row.body,
         time: formatDate(row.created_at),
       })));
-      setParticipationRequests((requestRows ?? []).map((row) => ({
-        id: row.id,
-        colonyId: row.colony_id,
-        profileId: row.profile_id,
-        user: row.profile?.username ?? "Utente",
-        message: row.message ?? "",
-        status: mapRequestStatus(row.status),
-      })));
+      setParticipationRequests((items) => {
+        const otherColonies = items.filter((item) => item.colonyId !== colonyId);
+        return [
+          ...(requestRows ?? []).map((row) => ({
+            id: row.id,
+            colonyId: row.colony_id,
+            profileId: row.profile_id,
+            user: row.profile?.username ?? "Utente",
+            message: row.message ?? "",
+            status: mapRequestStatus(row.status),
+          })),
+          ...otherColonies,
+        ];
+      });
       setChangeLog((changeRows ?? []).map((row) => ({
         id: row.id,
         colonyId: row.colony_id,
@@ -697,6 +708,7 @@ function App() {
         { data: friendRows, error: friendError },
         { data: directRows, error: directError },
         { data: threadRows, error: threadError },
+        { data: participationRows, error: participationError },
       ] = await Promise.all([
         supabase
           .from("profiles")
@@ -719,12 +731,18 @@ function App() {
           .select("id,title,body,category,created_at,author:profiles!forum_threads_author_id_fkey(username),posts:forum_posts(id,body,created_at,author:profiles!forum_posts_author_id_fkey(username))")
           .order("created_at", { ascending: false })
           .limit(30),
+        supabase
+          .from("participation_requests")
+          .select("id,colony_id,profile_id,message,status,created_at,profile:profiles!participation_requests_profile_id_fkey(username)")
+          .order("created_at", { ascending: false })
+          .limit(80),
       ]);
 
       if (profileError) throw profileError;
       if (friendError) throw friendError;
       if (directError) throw directError;
       if (threadError) throw threadError;
+      if (participationError) throw participationError;
 
       setProfiles(profileRows ?? []);
       setFriendRequests((friendRows ?? []).map((row) => {
@@ -738,6 +756,14 @@ function App() {
           status: row.status,
         };
       }));
+      setParticipationRequests((participationRows ?? []).map((row) => ({
+        id: row.id,
+        colonyId: row.colony_id,
+        profileId: row.profile_id,
+        user: row.profile?.username ?? "Utente",
+        message: row.message ?? "",
+        status: mapRequestStatus(row.status),
+      })));
     setPrivateMessages((directRows ?? []).map((row) => ({
         id: row.id,
         from: row.sender_id === currentUser.id ? currentUser.username : row.sender?.username ?? "Utente",
@@ -771,7 +797,7 @@ function App() {
     try {
       const { data, error } = await supabase
         .from("notifications")
-        .select("id,title,body,type,is_read,created_at")
+        .select("id,title,body,type,is_read,actor_id,created_at")
         .eq("recipient_id", currentUser.id)
         .order("created_at", { ascending: false })
         .limit(20);
@@ -781,6 +807,7 @@ function App() {
         title: row.title,
         body: row.body ?? "",
         type: row.type,
+        actorId: row.actor_id,
         read: row.is_read,
         time: formatDate(row.created_at),
       })));
@@ -1350,6 +1377,14 @@ function App() {
     }
     const colony = colonies.find((item) => item.id === colonyId);
     if (!colony || colony.adminId === currentUser?.id || colony.collaborators?.includes(currentUser?.username)) return false;
+    const existingRequest = participationRequests.find(
+      (request) =>
+        request.colonyId === colonyId &&
+        request.status === "In attesa" &&
+        (request.profileId === currentUser.id || request.user === currentUser.username),
+    );
+    if (existingRequest) return true;
+
     const localRequest = {
       id: `local-${Date.now()}`,
       colonyId,
@@ -1395,9 +1430,16 @@ function App() {
   }
 
   async function decideParticipation(requestId, nextStatus) {
-    if (!canEditSelected) return;
     const request = participationRequests.find((item) => item.id === requestId);
     if (!request) return;
+    const targetColony = colonies.find((item) => item.id === request.colonyId);
+    const canDecide =
+      isSiteAdmin ||
+      targetColony?.adminId === currentUser?.id ||
+      targetColony?.createdBy === currentUser?.id ||
+      targetColony?.admin === currentUser?.username;
+    if (!canDecide) return;
+
     const approved = nextStatus === "approved";
 
     if (approved) {
@@ -1440,12 +1482,11 @@ function App() {
       }
     }
 
-    const colony = colonies.find((item) => item.id === request.colonyId);
     await notifyProfile(
       request.profileId,
       approved ? "collaboration_approved" : "collaboration_rejected",
       approved ? "Collaborazione accettata" : "Collaborazione rifiutata",
-      `${colony?.name ?? "Colonia"}: richiesta ${approved ? "accettata" : "rifiutata"}`,
+      `${targetColony?.name ?? "Colonia"}: richiesta ${approved ? "accettata" : "rifiutata"}`,
     );
     await trackChange(request.colonyId, "participation_request", requestId, nextStatus, `${request.user}: richiesta ${approved ? "accettata" : "rifiutata"}`);
   }
@@ -1879,14 +1920,24 @@ function App() {
           setNotificationsOpen={setNotificationsOpen}
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
+          pendingCollaborationRequests={pendingCollaborationRequests}
+          colonies={colonies}
           onOpenAuth={() => setRegisterOpen(true)}
           onOpenProfile={() => setProfileOpen(true)}
+          onOpenColony={(id) => {
+            setSelectedId(id);
+            setActiveSection("Colonie");
+            setNotificationsOpen(false);
+          }}
+          onApproveParticipation={approveParticipation}
+          onRejectParticipation={rejectParticipation}
           onLogout={signOut}
         />
         {activeSection === "Mappa" && (
           <MapSection
             colonies={filteredColonies}
             selected={selected}
+            currentUser={currentUser}
             selectedId={selectedId}
             mapBounds={mapBounds}
             onBoundsChange={setMapBounds}
@@ -1934,6 +1985,7 @@ function App() {
           <ColoniesSection
             colonies={filteredColonies}
             selected={selected}
+            currentUser={currentUser}
             selectedId={selectedId}
             dataStatus={dataStatus}
             isDataBusy={isDataBusy}
@@ -2093,8 +2145,25 @@ function Sidebar({ activeSection, onSectionChange, counts }) {
   );
 }
 
-function Topbar({ currentUser, isAuthenticated, notifications, isNotificationsOpen, setNotificationsOpen, searchQuery, setSearchQuery, onOpenAuth, onOpenProfile, onLogout }) {
+function Topbar({
+  currentUser,
+  isAuthenticated,
+  notifications,
+  isNotificationsOpen,
+  setNotificationsOpen,
+  searchQuery,
+  setSearchQuery,
+  pendingCollaborationRequests = [],
+  colonies = [],
+  onOpenAuth,
+  onOpenProfile,
+  onOpenColony,
+  onApproveParticipation,
+  onRejectParticipation,
+  onLogout,
+}) {
   const unreadCount = notifications.filter((item) => !item.read).length;
+  const notificationCount = unreadCount + pendingCollaborationRequests.length;
 
   return (
     <header className="topbar">
@@ -2116,11 +2185,25 @@ function Topbar({ currentUser, isAuthenticated, notifications, isNotificationsOp
               onClick={() => setNotificationsOpen((value) => !value)}
             >
               <Bell size={19} />
-              {unreadCount > 0 && <span>{unreadCount}</span>}
+              {notificationCount > 0 && <span>{notificationCount}</span>}
             </button>
             {isNotificationsOpen && (
               <div className="notification-popover">
                 <h2>Notifiche</h2>
+                {pendingCollaborationRequests.map((request) => {
+                  const colony = colonies.find((item) => item.id === request.colonyId);
+                  return (
+                    <article className="notification-action" key={`collab-${request.id}`}>
+                      <strong>Richiesta collaborazione</strong>
+                      <p>{request.user} vuole collaborare a {colony?.name ?? "questa colonia"}.</p>
+                      <div>
+                        <button onClick={() => onOpenColony(request.colonyId)}>Apri</button>
+                        <button onClick={() => onApproveParticipation(request.id)}>Accetta</button>
+                        <button className="ghost" onClick={() => onRejectParticipation(request.id)}>Rifiuta</button>
+                      </div>
+                    </article>
+                  );
+                })}
                 {notifications.map((item) => (
                   <article key={item.id}>
                     <strong>{item.title}</strong>
@@ -2128,7 +2211,7 @@ function Topbar({ currentUser, isAuthenticated, notifications, isNotificationsOp
                     <small>{item.time}</small>
                   </article>
                 ))}
-                {!notifications.length && <p>Nessuna notifica.</p>}
+                {!notifications.length && !pendingCollaborationRequests.length && <p>Nessuna notifica.</p>}
               </div>
             )}
           </div>
@@ -2161,6 +2244,7 @@ function Topbar({ currentUser, isAuthenticated, notifications, isNotificationsOp
 function MapSection({
   colonies,
   selected,
+  currentUser,
   selectedId,
   mapBounds,
   onBoundsChange,
@@ -2220,6 +2304,7 @@ function MapSection({
       </section>
       <DetailPanel
         selected={selected}
+        currentUser={currentUser}
         onAddCat={onAddCat}
         onReportKitten={onReportKitten}
         comments={comments}
@@ -2393,10 +2478,31 @@ function reportTypeLabel(type) {
   return "Avvistamento";
 }
 
+function hasPendingCollaborationRequest(participationRequests = [], selected, currentUser) {
+  return participationRequests.some(
+    (request) =>
+      request.colonyId === selected?.id &&
+      request.status === "In attesa" &&
+      (request.profileId === currentUser?.id || request.user === currentUser?.username),
+  );
+}
+
+function CollaborationRequestButton({ isPending, onClick }) {
+  return (
+    <button className="full-width-action" onClick={onClick} disabled={isPending}>
+      <HeartHandshake size={16} />
+      {isPending ? "Richiesta inviata - In attesa" : "Diventa collaboratore"}
+    </button>
+  );
+}
+
 function DetailPanel({
   selected,
+  currentUser,
   isAuthenticated,
+  canEdit,
   onRequireAuth,
+  participationRequests = [],
   onRequestCollaboration,
   cats,
   helpReports,
@@ -2404,6 +2510,7 @@ function DetailPanel({
 }) {
   const openHelp = helpReports.filter((report) => report.colonyId === selected.id).slice(0, 2);
   const collaboratorCount = selected.collaborators?.length ?? 0;
+  const isCollaborationPending = hasPendingCollaborationRequest(participationRequests, selected, currentUser);
 
   return (
     <aside className="detail-panel compact-detail">
@@ -2427,11 +2534,11 @@ function DetailPanel({
         <Fact icon={Users} label="Responsabile" value={selected.responsible ?? selected.admin} />
         <Fact icon={HeartHandshake} label="Collaboratori" value={collaboratorCount} />
       </div>
-      {isAuthenticated && (
-        <button className="full-width-action" onClick={() => onRequestCollaboration(selected.id)}>
-          <HeartHandshake size={16} />
-          Richiedi collaborazione
-        </button>
+      {isAuthenticated && !canEdit && (
+        <CollaborationRequestButton
+          isPending={isCollaborationPending}
+          onClick={() => onRequestCollaboration(selected.id)}
+        />
       )}
       <section className="mini-panel">
         <div className="section-title compact">
@@ -3115,6 +3222,7 @@ function SocialPanel({
 function ColoniesSection({
   colonies,
   selected,
+  currentUser,
   selectedId,
   dataStatus,
   isDataBusy,
@@ -3409,6 +3517,7 @@ function ColoniesSection({
       </div>
       <ColonyFullPanel
         selected={selected}
+        currentUser={currentUser}
         isAuthenticated={isAuthenticated}
         canEdit={canEdit}
         onRequireAuth={onRequireAuth}
@@ -3435,6 +3544,7 @@ function ColoniesSection({
 
 function ColonyFullPanel({
   selected,
+  currentUser,
   isAuthenticated,
   canEdit,
   onRequireAuth,
@@ -3457,6 +3567,7 @@ function ColonyFullPanel({
 }) {
   const [activeTab, setActiveTab] = useState("Scheda");
   const tabs = ["Scheda", "Permessi", "Sanitario", "Foto e gatti", "Discussione"];
+  const isCollaborationPending = hasPendingCollaborationRequest(participationRequests, selected, currentUser);
 
   return (
     <section className="colony-full-panel">
@@ -3541,10 +3652,10 @@ function ColonyFullPanel({
         <>
           <HelpFeed reports={helpReports} selected={selected} canEdit={canEdit} onCreateHelpRequest={onCreateHelpRequest} />
           {isAuthenticated && !canEdit && (
-            <button className="full-width-action" onClick={() => onRequestCollaboration(selected.id)}>
-              <HeartHandshake size={16} />
-              Richiedi collaborazione
-            </button>
+            <CollaborationRequestButton
+              isPending={isCollaborationPending}
+              onClick={() => onRequestCollaboration(selected.id)}
+            />
           )}
           <ColonyDiscussionPanel
             isAuthenticated={isAuthenticated}

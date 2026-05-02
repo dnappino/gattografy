@@ -374,6 +374,33 @@ kbd {
   line-height: 1.35;
 }
 
+.notification-action div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 4px;
+}
+
+.notification-action button {
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 7px;
+  background: var(--green);
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.notification-action button:first-child {
+  background: var(--surface-soft);
+  color: var(--green);
+}
+
+.notification-action button.ghost {
+  background: var(--coral-soft);
+  color: var(--coral);
+}
+
 .content-grid {
   display: grid;
   grid-template-columns: minmax(480px, 1fr) minmax(360px, 42%);
@@ -985,6 +1012,12 @@ kbd {
   background: var(--green);
   color: #fff;
   font-weight: 850;
+}
+
+.full-width-action:disabled {
+  cursor: default;
+  background: var(--surface-soft);
+  color: var(--green);
 }
 
 .row-actions {
