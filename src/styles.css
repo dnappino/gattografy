@@ -601,6 +601,121 @@ kbd {
   grid-template-columns: 1fr 1fr;
 }
 
+.messages-layout,
+.forum-panel {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.8fr) minmax(420px, 1.2fr);
+  gap: 12px;
+}
+
+.social-card {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  box-shadow: var(--small-shadow);
+}
+
+.social-card h2 {
+  margin: 0 0 12px;
+  font-size: 1rem;
+}
+
+.message-compose,
+.forum-compose {
+  display: grid;
+  gap: 10px;
+  align-self: start;
+}
+
+.message-compose label,
+.forum-form-grid label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 780;
+}
+
+.message-compose select,
+.message-compose textarea,
+.forum-form-grid input,
+.forum-form-grid select,
+.forum-form-grid textarea {
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 8px 10px;
+  color: var(--ink);
+  background: #fff;
+}
+
+.message-compose textarea,
+.forum-form-grid textarea {
+  min-height: 100px;
+  resize: vertical;
+}
+
+.direct-list {
+  max-height: 460px;
+}
+
+.forum-form-grid {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.forum-thread-list {
+  display: grid;
+  gap: 10px;
+}
+
+.forum-thread {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  box-shadow: var(--small-shadow);
+}
+
+.forum-thread > span {
+  width: max-content;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--mint);
+  color: var(--green);
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.forum-thread strong,
+.forum-thread p,
+.forum-thread small {
+  margin: 0;
+}
+
+.forum-thread p,
+.forum-thread small {
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.forum-post {
+  padding: 9px;
+  border-radius: 7px;
+  background: #f8fcfa;
+  border: 1px solid var(--line);
+}
+
+.padded {
+  padding: 0 16px 16px;
+}
+
 .kanban-column {
   min-height: 320px;
   padding: 14px;
@@ -1985,7 +2100,9 @@ select {
   .create-panel,
   .registry-grid,
   .kanban-grid,
-  .community-grid {
+  .community-grid,
+  .messages-layout,
+  .forum-panel {
     grid-template-columns: 1fr 1fr;
   }
 
@@ -2018,7 +2135,10 @@ select {
   .create-panel,
   .registry-grid,
   .kanban-grid,
-  .community-grid {
+  .community-grid,
+  .messages-layout,
+  .forum-panel,
+  .forum-form-grid {
     grid-template-columns: 1fr;
   }
 

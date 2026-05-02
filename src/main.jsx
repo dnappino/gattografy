@@ -313,6 +313,9 @@ function App() {
   const [participationRequests, setParticipationRequests] = useState([]);
   const [friendRequests, setFriendRequests] = useState([]);
   const [messages, setMessages] = useState([]);
+  const [profiles, setProfiles] = useState([]);
+  const [privateMessages, setPrivateMessages] = useState([]);
+  const [forumThreads, setForumThreads] = useState([]);
   const [messageDraft, setMessageDraft] = useState("");
   const selected = useMemo(
     () => colonies.find((colony) => colony.id === selectedId) ?? colonies[0],
@@ -369,6 +372,11 @@ function App() {
     if (!selected?.id) return;
     loadColonyActivity(selected.id);
   }, [selected?.id, isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    loadSocialData();
+  }, [isAuthenticated, currentUser?.id]);
 
   async function hydrateSupabaseUser(user) {
     const supabase = await getSupabaseClient();
@@ -502,6 +510,83 @@ function App() {
       })));
     } catch (error) {
       setDataStatus(`Errore lettura social: ${error.message}`);
+    }
+  }
+
+  async function loadSocialData() {
+    const supabase = await getSupabaseClient();
+    if (!supabase || !currentUser?.id) return;
+
+    try {
+      const [
+        { data: profileRows, error: profileError },
+        { data: friendRows, error: friendError },
+        { data: directRows, error: directError },
+        { data: threadRows, error: threadError },
+      ] = await Promise.all([
+        supabase
+          .from("profiles")
+          .select("id,username,email,avatar_url,role")
+          .neq("id", currentUser.id)
+          .order("username", { ascending: true }),
+        supabase
+          .from("friend_requests")
+          .select("id,from_profile_id,to_profile_id,status,created_at,from_profile:profiles!friend_requests_from_profile_id_fkey(username),to_profile:profiles!friend_requests_to_profile_id_fkey(username)")
+          .or(`from_profile_id.eq.${currentUser.id},to_profile_id.eq.${currentUser.id}`)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("messages")
+          .select("id,sender_id,recipient_id,body,created_at,sender:profiles!messages_sender_id_fkey(username),recipient:profiles!messages_recipient_id_fkey(username)")
+          .is("colony_id", null)
+          .or(`sender_id.eq.${currentUser.id},recipient_id.eq.${currentUser.id}`)
+          .order("created_at", { ascending: true }),
+        supabase
+          .from("forum_threads")
+          .select("id,title,body,category,created_at,author:profiles!forum_threads_author_id_fkey(username),posts:forum_posts(id,body,created_at,author:profiles!forum_posts_author_id_fkey(username))")
+          .order("created_at", { ascending: false })
+          .limit(30),
+      ]);
+
+      if (profileError) throw profileError;
+      if (friendError) throw friendError;
+      if (directError) throw directError;
+      if (threadError) throw threadError;
+
+      setProfiles(profileRows ?? []);
+      setFriendRequests((friendRows ?? []).map((row) => {
+        const incoming = row.to_profile_id === currentUser.id;
+        return {
+          id: row.id,
+          user: incoming ? row.from_profile?.username : row.to_profile?.username,
+          note: incoming ? "Richiesta ricevuta" : "Richiesta inviata",
+          accepted: row.status === "approved",
+          incoming,
+          status: row.status,
+        };
+      }));
+      setPrivateMessages((directRows ?? []).map((row) => ({
+        id: row.id,
+        from: row.sender_id === currentUser.id ? currentUser.username : row.sender?.username ?? "Utente",
+        to: row.recipient_id === currentUser.id ? currentUser.username : row.recipient?.username ?? "Utente",
+        text: row.body,
+        time: formatDate(row.created_at),
+      })));
+      setForumThreads((threadRows ?? []).map((row) => ({
+        id: row.id,
+        title: row.title,
+        body: row.body,
+        category: row.category,
+        author: row.author?.username ?? "Utente",
+        time: formatDate(row.created_at),
+        posts: (row.posts ?? []).map((post) => ({
+          id: post.id,
+          author: post.author?.username ?? "Utente",
+          body: post.body,
+          time: formatDate(post.created_at),
+        })),
+      })));
+    } catch (error) {
+      setDataStatus(`Errore social: ${error.message}`);
     }
   }
 
@@ -881,6 +966,19 @@ function App() {
         item.id === requestId ? { ...item, accepted: true } : item,
       ),
     );
+    saveFriendApproval(requestId);
+  }
+
+  async function saveFriendApproval(requestId) {
+    if (String(requestId).startsWith("local-")) return;
+    const supabase = await getSupabaseClient();
+    if (!supabase || !currentUser?.id) return;
+
+    const { error } = await supabase
+      .from("friend_requests")
+      .update({ status: "approved" })
+      .eq("id", requestId);
+    if (error) setDataStatus(`Errore accettazione amicizia: ${error.message}`);
   }
 
   function sendMessage() {
@@ -924,6 +1022,161 @@ function App() {
       body,
     });
     if (error) setDataStatus(`Errore messaggio: ${error.message}`);
+  }
+
+  async function sendPrivateMessage(recipientId, body) {
+    if (!isAuthenticated || !recipientId || !body.trim()) return false;
+    const recipient = profiles.find((profile) => profile.id === recipientId);
+    const localMessage = {
+      id: `local-${Date.now()}`,
+      from: currentUser.username,
+      to: recipient?.username ?? "Utente",
+      text: body.trim(),
+      time: "adesso",
+    };
+    setPrivateMessages((items) => [...items, localMessage]);
+
+    const supabase = await getSupabaseClient();
+    if (!supabase || !currentUser?.id) return true;
+
+    const { data, error } = await supabase
+      .from("messages")
+      .insert({
+        sender_id: currentUser.id,
+        recipient_id: recipientId,
+        body: body.trim(),
+      })
+      .select("id,sender_id,recipient_id,body,created_at,sender:profiles!messages_sender_id_fkey(username),recipient:profiles!messages_recipient_id_fkey(username)")
+      .single();
+
+    if (error) {
+      setDataStatus(`Errore messaggio privato: ${error.message}`);
+      return false;
+    }
+
+    setPrivateMessages((items) => [
+      ...items.filter((item) => item.id !== localMessage.id),
+      {
+        id: data.id,
+        from: currentUser.username,
+        to: data.recipient?.username ?? recipient?.username ?? "Utente",
+        text: data.body,
+        time: formatDate(data.created_at),
+      },
+    ]);
+    return true;
+  }
+
+  async function requestFriend(profileId) {
+    if (!isAuthenticated || !profileId || profileId === currentUser?.id) return false;
+    const profile = profiles.find((item) => item.id === profileId);
+    const localRequest = {
+      id: `local-${Date.now()}`,
+      user: profile?.username ?? "Utente",
+      note: "Richiesta inviata",
+      accepted: false,
+      incoming: false,
+      status: "pending",
+    };
+    setFriendRequests((items) => [localRequest, ...items]);
+
+    const supabase = await getSupabaseClient();
+    if (!supabase || !currentUser?.id) return true;
+
+    const { error } = await supabase.from("friend_requests").insert({
+      from_profile_id: currentUser.id,
+      to_profile_id: profileId,
+      status: "pending",
+    });
+    if (error) {
+      setDataStatus(`Errore richiesta amicizia: ${error.message}`);
+      return false;
+    }
+    await loadSocialData();
+    return true;
+  }
+
+  async function createForumThread(payload) {
+    if (!isAuthenticated || !payload.title.trim()) return false;
+    const thread = {
+      id: `local-${Date.now()}`,
+      title: payload.title.trim(),
+      body: payload.body.trim(),
+      category: payload.category,
+      author: currentUser.username,
+      time: "adesso",
+      posts: [],
+    };
+    setForumThreads((items) => [thread, ...items]);
+
+    const supabase = await getSupabaseClient();
+    if (!supabase || !currentUser?.id) return true;
+
+    const { data, error } = await supabase
+      .from("forum_threads")
+      .insert({
+        title: thread.title,
+        body: thread.body || null,
+        category: thread.category,
+        author_id: currentUser.id,
+      })
+      .select("id,title,body,category,created_at,author:profiles!forum_threads_author_id_fkey(username)")
+      .single();
+
+    if (error) {
+      setDataStatus(`Errore forum: ${error.message}`);
+      return false;
+    }
+
+    setForumThreads((items) => [
+      {
+        id: data.id,
+        title: data.title,
+        body: data.body,
+        category: data.category,
+        author: data.author?.username ?? currentUser.username,
+        time: formatDate(data.created_at),
+        posts: [],
+      },
+      ...items.filter((item) => item.id !== thread.id),
+    ]);
+    return true;
+  }
+
+  async function addForumPost(threadId, body) {
+    if (!isAuthenticated || !body.trim()) return false;
+    setForumThreads((items) =>
+      items.map((thread) =>
+        thread.id === threadId
+          ? {
+              ...thread,
+              posts: [
+                ...(thread.posts ?? []),
+                {
+                  id: `local-${Date.now()}`,
+                  author: currentUser.username,
+                  body: body.trim(),
+                  time: "adesso",
+                },
+              ],
+            }
+          : thread,
+      ),
+    );
+
+    const supabase = await getSupabaseClient();
+    if (!supabase || !currentUser?.id || String(threadId).startsWith("local-")) return true;
+
+    const { error } = await supabase.from("forum_posts").insert({
+      thread_id: threadId,
+      author_id: currentUser.id,
+      body: body.trim(),
+    });
+    if (error) {
+      setDataStatus(`Errore risposta forum: ${error.message}`);
+      return false;
+    }
+    return true;
   }
 
   async function saveCat(catId, patch) {
@@ -1127,12 +1380,9 @@ function App() {
         )}
         {activeSection === "Messaggi" && isAuthenticated && (
           <MessagesSection
-            friendRequests={friendRequests}
-            messages={messages}
-            messageDraft={messageDraft}
-            setMessageDraft={setMessageDraft}
-            onAcceptFriend={acceptFriend}
-            onSendMessage={sendMessage}
+            profiles={profiles}
+            privateMessages={privateMessages}
+            onSendPrivateMessage={sendPrivateMessage}
           />
         )}
         {activeSection === "Messaggi" && !isAuthenticated && (
@@ -1144,10 +1394,15 @@ function App() {
         {activeSection === "Community" && isAuthenticated && (
           <CommunitySection
             colonies={colonies}
+            profiles={profiles}
             participationRequests={participationRequests}
             friendRequests={friendRequests}
+            forumThreads={forumThreads}
             onApproveParticipation={approveParticipation}
             onAcceptFriend={acceptFriend}
+            onRequestFriend={requestFriend}
+            onCreateForumThread={createForumThread}
+            onAddForumPost={addForumPost}
           />
         )}
         {activeSection === "Community" && !isAuthenticated && (
@@ -2502,69 +2757,93 @@ function ReportsSection({ colonies, reports, canEdit, selected, onCreateHelpRequ
   );
 }
 
-function MessagesSection({
-  friendRequests,
-  messages,
-  messageDraft,
-  setMessageDraft,
-  onAcceptFriend,
-  onSendMessage,
-}) {
+function MessagesSection({ profiles, privateMessages, onSendPrivateMessage }) {
+  const [recipientId, setRecipientId] = useState(profiles[0]?.id ?? "");
+  const [draft, setDraft] = useState("");
+
+  useEffect(() => {
+    if (!recipientId && profiles[0]?.id) setRecipientId(profiles[0].id);
+  }, [profiles, recipientId]);
+
+  async function submit(event) {
+    event.preventDefault();
+    const sent = await onSendPrivateMessage(recipientId, draft);
+    if (sent) setDraft("");
+  }
+
   return (
     <section className="page-section">
-      <PageHeader
-        title="Messaggi"
-        action="Nuovo messaggio"
-      />
-      <SocialPanel
-        friendRequests={friendRequests}
-        messages={messages}
-        messageDraft={messageDraft}
-        setMessageDraft={setMessageDraft}
-        onAcceptFriend={onAcceptFriend}
-        onSendMessage={onSendMessage}
-      />
+      <PageHeader title="Messaggi" action="Nuovo messaggio" />
+      <div className="messages-layout">
+        <form className="social-card message-compose" onSubmit={submit}>
+          <h2>Messaggio privato</h2>
+          <label>
+            Destinatario
+            <select value={recipientId} onChange={(event) => setRecipientId(event.target.value)}>
+              <option value="">Seleziona utente</option>
+              {profiles.map((profile) => (
+                <option key={profile.id} value={profile.id}>{profile.username}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Testo
+            <textarea value={draft} onChange={(event) => setDraft(event.target.value)} />
+          </label>
+          <button className="primary">Invia</button>
+        </form>
+        <section className="social-card">
+          <h2>Conversazioni</h2>
+          <div className="message-list direct-list">
+            {privateMessages.map((message) => (
+              <article key={message.id}>
+                <strong>{message.from}</strong>
+                <span>{message.time}</span>
+                <p>{message.text}</p>
+                <small>A: {message.to}</small>
+              </article>
+            ))}
+            {!privateMessages.length && <p className="empty-copy">Nessun messaggio privato.</p>}
+          </div>
+        </section>
+      </div>
     </section>
   );
 }
 
 function CommunitySection({
   colonies,
+  profiles,
   participationRequests,
   friendRequests,
+  forumThreads,
   onApproveParticipation,
   onAcceptFriend,
+  onRequestFriend,
+  onCreateForumThread,
+  onAddForumPost,
 }) {
   return (
     <section className="page-section">
-      <PageHeader
-        title="Community"
-        action="Invita utente"
-      />
+      <PageHeader title="Community" action="Invita utente" />
+      <ForumPanel threads={forumThreads} onCreateThread={onCreateForumThread} onAddPost={onAddForumPost} />
       <div className="community-grid">
         <div className="table-panel">
-          <h2>Richieste di partecipazione</h2>
-          {participationRequests.map((request) => {
-            const colony = colonies.find((item) => item.id === request.colonyId);
-            return (
-              <article className="request-row" key={request.id}>
-                <div>
-                  <strong>{request.user}</strong>
-                  <p>{request.message}</p>
-                  <small>{colony?.name ?? "Colonia non trovata"} · {request.status}</small>
-                </div>
-                <button
-                  disabled={request.status === "Approvata"}
-                  onClick={() => onApproveParticipation(request.id)}
-                >
-                  {request.status === "Approvata" ? "Approvata" : "Approva"}
-                </button>
-              </article>
-            );
-          })}
+          <h2>Utenti</h2>
+          {profiles.map((profile) => (
+            <article className="request-row" key={profile.id}>
+              <div>
+                <strong>{profile.username}</strong>
+                <p>{profile.email}</p>
+                <small>{profile.role}</small>
+              </div>
+              <button onClick={() => onRequestFriend(profile.id)}>Amicizia</button>
+            </article>
+          ))}
+          {!profiles.length && <p className="empty-copy padded">Nessun altro utente registrato.</p>}
         </div>
         <div className="table-panel">
-          <h2>Richieste di amicizia</h2>
+          <h2>Amicizie</h2>
           {friendRequests.map((request) => (
             <article className="request-row" key={request.id}>
               <div>
@@ -2572,12 +2851,110 @@ function CommunitySection({
                 <p>{request.note}</p>
                 <small>{request.accepted ? "Accettata" : "In attesa"}</small>
               </div>
-              <button disabled={request.accepted} onClick={() => onAcceptFriend(request.id)}>
-                {request.accepted ? "Amica" : "Accetta"}
-              </button>
+              {request.incoming && (
+                <button disabled={request.accepted} onClick={() => onAcceptFriend(request.id)}>
+                  {request.accepted ? "Amica" : "Accetta"}
+                </button>
+              )}
             </article>
           ))}
+          {!friendRequests.length && <p className="empty-copy padded">Nessuna richiesta di amicizia.</p>}
         </div>
+      </div>
+      <div className="table-panel">
+        <h2>Richieste di partecipazione colonie</h2>
+        {participationRequests.map((request) => {
+          const colony = colonies.find((item) => item.id === request.colonyId);
+          return (
+            <article className="request-row" key={request.id}>
+              <div>
+                <strong>{request.user}</strong>
+                <p>{request.message}</p>
+                <small>{colony?.name ?? "Colonia non trovata"} ? {request.status}</small>
+              </div>
+              <button
+                disabled={request.status === "Approvata"}
+                onClick={() => onApproveParticipation(request.id)}
+              >
+                {request.status === "Approvata" ? "Approvata" : "Approva"}
+              </button>
+            </article>
+          );
+        })}
+        {!participationRequests.length && <p className="empty-copy padded">Nessuna richiesta di partecipazione.</p>}
+      </div>
+    </section>
+  );
+}
+
+function ForumPanel({ threads, onCreateThread, onAddPost }) {
+  const [draft, setDraft] = useState({ title: "", body: "", category: "Generale" });
+  const [replyDrafts, setReplyDrafts] = useState({});
+
+  async function submitThread(event) {
+    event.preventDefault();
+    const created = await onCreateThread(draft);
+    if (created) setDraft({ title: "", body: "", category: "Generale" });
+  }
+
+  async function submitReply(threadId) {
+    const sent = await onAddPost(threadId, replyDrafts[threadId] ?? "");
+    if (sent) setReplyDrafts((items) => ({ ...items, [threadId]: "" }));
+  }
+
+  return (
+    <section className="forum-panel">
+      <form className="social-card forum-compose" onSubmit={submitThread}>
+        <h2>Forum</h2>
+        <div className="forum-form-grid">
+          <label>
+            Categoria
+            <select value={draft.category} onChange={(event) => setDraft((current) => ({ ...current, category: event.target.value }))}>
+              <option>Generale</option>
+              <option>Salute</option>
+              <option>Turni</option>
+              <option>Adozioni</option>
+              <option>Emergenze</option>
+            </select>
+          </label>
+          <label>
+            Titolo thread
+            <input value={draft.title} onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))} />
+          </label>
+          <label className="wide-field">
+            Testo
+            <textarea value={draft.body} onChange={(event) => setDraft((current) => ({ ...current, body: event.target.value }))} />
+          </label>
+        </div>
+        <button className="primary">Apri thread</button>
+      </form>
+      <div className="forum-thread-list">
+        {threads.map((thread) => (
+          <article className="forum-thread" key={thread.id}>
+            <span>{thread.category}</span>
+            <strong>{thread.title}</strong>
+            {thread.body && <p>{thread.body}</p>}
+            <small>{thread.author} ? {thread.time}</small>
+            {(thread.posts ?? []).map((post) => (
+              <div className="forum-post" key={post.id}>
+                <strong>{post.author}</strong>
+                <p>{post.body}</p>
+              </div>
+            ))}
+            <div className="message-input">
+              <input
+                value={replyDrafts[thread.id] ?? ""}
+                onChange={(event) => setReplyDrafts((items) => ({ ...items, [thread.id]: event.target.value }))}
+                placeholder="Rispondi al thread..."
+              />
+              <button onClick={() => submitReply(thread.id)}>
+                <MessageCircle size={17} />
+                Rispondi
+              </button>
+            </div>
+          </article>
+        ))}
+        {!threads.length && <p className="empty-copy">Nessun thread aperto.</p>}
       </div>
     </section>
   );

@@ -45,7 +45,7 @@ delete from public.colonies;
 do $$
 declare
   admin_id uuid;
-  default_admin_id uuid := '00000000-0000-0000-0000-000000000001';
+  default_admin_id uuid := '680841be-e1e1-4f73-ba2c-ef352bc1d2c7';
 begin
   insert into public.profiles (id, username, email, role)
   select

@@ -166,6 +166,24 @@ create table public.messages (
   check (recipient_id is not null or colony_id is not null)
 );
 
+create table public.forum_threads (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  body text,
+  category text not null default 'Generale',
+  author_id uuid not null references public.profiles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table public.forum_posts (
+  id uuid primary key default gen_random_uuid(),
+  thread_id uuid not null references public.forum_threads(id) on delete cascade,
+  author_id uuid not null references public.profiles(id) on delete cascade,
+  body text not null,
+  created_at timestamptz not null default now()
+);
+
 create or replace function public.is_site_admin()
 returns boolean
 language sql
@@ -211,6 +229,8 @@ alter table public.cat_photos enable row level security;
 alter table public.reports enable row level security;
 alter table public.comments enable row level security;
 alter table public.messages enable row level security;
+alter table public.forum_threads enable row level security;
+alter table public.forum_posts enable row level security;
 
 create policy "profiles are readable by authenticated users"
 on public.profiles for select
@@ -274,6 +294,22 @@ with check (
   )
 );
 
+create policy "users read own friend requests"
+on public.friend_requests for select
+to authenticated
+using (from_profile_id = auth.uid() or to_profile_id = auth.uid() or public.is_site_admin());
+
+create policy "users create own friend requests"
+on public.friend_requests for insert
+to authenticated
+with check (from_profile_id = auth.uid() and to_profile_id <> auth.uid());
+
+create policy "friend recipients or site admin update requests"
+on public.friend_requests for update
+to authenticated
+using (to_profile_id = auth.uid() or public.is_site_admin())
+with check (to_profile_id = auth.uid() or public.is_site_admin());
+
 create policy "cats are public"
 on public.cats for select
 to anon, authenticated
@@ -324,3 +360,35 @@ create policy "authenticated users send messages as themselves"
 on public.messages for insert
 to authenticated
 with check (sender_id = auth.uid());
+
+create policy "forum threads are readable"
+on public.forum_threads for select
+to authenticated
+using (true);
+
+create policy "authenticated users create forum threads"
+on public.forum_threads for insert
+to authenticated
+with check (author_id = auth.uid());
+
+create policy "authors or site admin update forum threads"
+on public.forum_threads for update
+to authenticated
+using (author_id = auth.uid() or public.is_site_admin())
+with check (author_id = auth.uid() or public.is_site_admin());
+
+create policy "forum posts are readable"
+on public.forum_posts for select
+to authenticated
+using (true);
+
+create policy "authenticated users create forum posts"
+on public.forum_posts for insert
+to authenticated
+with check (author_id = auth.uid());
+
+create policy "authors or site admin update forum posts"
+on public.forum_posts for update
+to authenticated
+using (author_id = auth.uid() or public.is_site_admin())
+with check (author_id = auth.uid() or public.is_site_admin());
