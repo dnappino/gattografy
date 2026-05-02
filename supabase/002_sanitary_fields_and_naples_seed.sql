@@ -16,7 +16,8 @@ alter table public.colonies
   add column if not exists total_unsterilized integer not null default 0,
   add column if not exists health_notes text,
   add column if not exists source_label text,
-  add column if not exists source_url text;
+  add column if not exists source_url text,
+  add column if not exists photo_url text;
 
 alter table public.profiles
   drop constraint if exists profiles_id_fkey;
@@ -25,6 +26,7 @@ alter table public.cats
   add column if not exists sterilized boolean,
   add column if not exists sterilization_date date,
   add column if not exists sterilization_year integer,
+  add column if not exists photo_url text,
   add column if not exists ear_tip boolean not null default false,
   add column if not exists provenance text,
   add column if not exists already_present boolean,

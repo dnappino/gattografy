@@ -48,6 +48,18 @@ const catPhotos = [
   catSix,
 ];
 
+const catPlaceholder =
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240"><rect width="240" height="240" rx="18" fill="#dff1e6"/><path d="M68 94 82 44l34 34h8l34-34 14 50c22 15 35 40 35 69 0 42-35 73-87 73s-87-31-87-73c0-29 13-54 35-69Z" fill="#236b53"/><circle cx="91" cy="139" r="12" fill="#fff"/><circle cx="149" cy="139" r="12" fill="#fff"/><path d="M114 164h12l-6 7Z" fill="#e46755"/><path d="M95 181c15 12 35 12 50 0" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round"/></svg>',
+  );
+
+const colonyPlaceholder =
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240"><rect width="240" height="240" rx="18" fill="#e0edf6"/><path d="M120 214s70-56 70-122a70 70 0 0 0-140 0c0 66 70 122 70 122Z" fill="#386e9a"/><circle cx="120" cy="92" r="28" fill="#fff"/><path d="M120 46v92" stroke="#dff1e6" stroke-width="10" stroke-linecap="round"/><path d="M74 92h92" stroke="#dff1e6" stroke-width="10" stroke-linecap="round"/></svg>',
+  );
+
 const seedColonies = [
   {
     id: 1,
@@ -236,7 +248,8 @@ function mapDbColony(row, index = 0) {
     sourceUrl: row.source_url,
     lat: row.lat,
     lng: row.lng,
-    photos: [catPhotos[index % catPhotos.length]],
+    photoUrl: row.photo_url ?? "",
+    photos: row.photo_url ? [row.photo_url] : [colonyPlaceholder],
   };
 }
 
@@ -268,6 +281,7 @@ function mapDbCat(row) {
     sterilized: row.sterilized,
     sterilizationDate: row.sterilization_date ?? "",
     sterilizationYear: row.sterilization_year ?? "",
+    photoUrl: row.photo_url ?? "",
     earTip: Boolean(row.ear_tip),
     provenance: row.provenance ?? "",
     alreadyPresent: row.already_present,
@@ -275,7 +289,7 @@ function mapDbCat(row) {
     approximateBirthDate: row.approximate_birth_date ?? "",
     removalReason: row.removal_reason ?? "",
     removedAt: row.removed_at ?? "",
-    photo: catPhotos[0],
+    photo: row.photo_url || catPlaceholder,
   };
 }
 
@@ -288,6 +302,19 @@ function mapRequestStatus(status) {
 function formatDate(value) {
   if (!value) return "";
   return new Intl.DateTimeFormat("it-IT", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+}
+
+async function uploadPublicImage(supabase, bucket, file, folder) {
+  if (!file) return "";
+  const extension = file.name?.split(".").pop() || "jpg";
+  const path = `${folder}/${crypto.randomUUID()}.${extension}`;
+  const { error } = await supabase.storage.from(bucket).upload(path, file, {
+    cacheControl: "3600",
+    upsert: false,
+  });
+  if (error) throw error;
+  const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+  return data.publicUrl;
 }
 
 function App() {
@@ -316,6 +343,8 @@ function App() {
   const [profiles, setProfiles] = useState([]);
   const [privateMessages, setPrivateMessages] = useState([]);
   const [forumThreads, setForumThreads] = useState([]);
+  const [notifications, setNotifications] = useState([]);
+  const [isNotificationsOpen, setNotificationsOpen] = useState(false);
   const [messageDraft, setMessageDraft] = useState("");
   const selected = useMemo(
     () => colonies.find((colony) => colony.id === selectedId) ?? colonies[0],
@@ -332,6 +361,10 @@ function App() {
       selected.collaborators?.includes(currentUser?.username));
   const visibleCats = catsByColony[selected?.id] ?? [];
   const helpReports = reports.filter((report) => report.type === "rescue" || report.type === "problem");
+  const menuCounts = {
+    Segnalazioni: reports.filter((report) => report.status !== "closed").length,
+    Messaggi: privateMessages.length,
+  };
 
   useEffect(() => {
     let unsubscribe = null;
@@ -359,6 +392,7 @@ function App() {
           setCurrentUser(null);
           setFriendRequests([]);
           setMessages([]);
+          setNotifications([]);
         }
       });
       unsubscribe = listener.subscription.unsubscribe;
@@ -376,6 +410,7 @@ function App() {
   useEffect(() => {
     if (!isAuthenticated) return;
     loadSocialData();
+    loadNotifications();
   }, [isAuthenticated, currentUser?.id]);
 
   async function hydrateSupabaseUser(user) {
@@ -407,7 +442,7 @@ function App() {
     try {
       const { data, error } = await supabase
         .from("colonies")
-        .select("id,name,address,city,location_context,lat,lng,status,asl_declared,registry_number,health_last_updated,health_record_date,volunteer_name,volunteer_phone,volunteer_call_hours,total_males,sterilized_males,unsterilized_males,total_females,sterilized_females,unsterilized_females,total_sterilized,total_unsterilized,health_notes,source_label,source_url,created_by,colony_admin_id,created_at,admin_profile:profiles!colonies_colony_admin_id_fkey(username,email,avatar_url)")
+        .select("id,name,address,city,location_context,lat,lng,status,asl_declared,registry_number,health_last_updated,health_record_date,volunteer_name,volunteer_phone,volunteer_call_hours,total_males,sterilized_males,unsterilized_males,total_females,sterilized_females,unsterilized_females,total_sterilized,total_unsterilized,health_notes,source_label,source_url,photo_url,created_by,colony_admin_id,created_at,admin_profile:profiles!colonies_colony_admin_id_fkey(username,email,avatar_url)")
         .order("created_at", { ascending: false });
 
       if (error) throw error;
@@ -449,7 +484,7 @@ function App() {
             .order("created_at", { ascending: false }),
           supabase
             .from("cats")
-            .select("id,colony_id,name,sex,status,notes,sterilized,sterilization_date,sterilization_year,ear_tip,provenance,already_present,description,approximate_birth_date,removal_reason,removed_at,created_at")
+            .select("id,colony_id,name,sex,status,notes,sterilized,sterilization_date,sterilization_year,ear_tip,provenance,already_present,description,approximate_birth_date,removal_reason,removed_at,photo_url,created_at")
             .eq("colony_id", colonyId)
             .order("created_at", { ascending: false }),
         ]);
@@ -564,7 +599,7 @@ function App() {
           status: row.status,
         };
       }));
-      setPrivateMessages((directRows ?? []).map((row) => ({
+    setPrivateMessages((directRows ?? []).map((row) => ({
         id: row.id,
         from: row.sender_id === currentUser.id ? currentUser.username : row.sender?.username ?? "Utente",
         to: row.recipient_id === currentUser.id ? currentUser.username : row.recipient?.username ?? "Utente",
@@ -588,6 +623,63 @@ function App() {
     } catch (error) {
       setDataStatus(`Errore social: ${error.message}`);
     }
+  }
+
+  async function loadNotifications() {
+    const supabase = await getSupabaseClient();
+    if (!supabase || !currentUser?.id) return;
+
+    try {
+      const { data, error } = await supabase
+        .from("notifications")
+        .select("id,title,body,type,is_read,created_at")
+        .eq("recipient_id", currentUser.id)
+        .order("created_at", { ascending: false })
+        .limit(20);
+      if (error) throw error;
+      setNotifications((data ?? []).map((row) => ({
+        id: row.id,
+        title: row.title,
+        body: row.body ?? "",
+        type: row.type,
+        read: row.is_read,
+        time: formatDate(row.created_at),
+      })));
+    } catch (error) {
+      setDataStatus(`Errore notifiche: ${error.message}`);
+    }
+  }
+
+  async function notifyAdmins(type, title, body) {
+    const localNotification = {
+      id: `local-${Date.now()}`,
+      title,
+      body,
+      type,
+      read: false,
+      time: "adesso",
+    };
+    if (isSiteAdmin) setNotifications((items) => [localNotification, ...items]);
+
+    const supabase = await getSupabaseClient();
+    if (!supabase) return;
+
+    const { data: admins, error } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("role", "site_admin");
+    if (error || !admins?.length) return;
+
+    await supabase.from("notifications").insert(
+      admins.map((admin) => ({
+        recipient_id: admin.id,
+        actor_id: currentUser?.id ?? null,
+        type,
+        title,
+        body,
+      })),
+    );
+    if (currentUser?.role === "site_admin") await loadNotifications();
   }
 
   async function createColony(newColony) {
@@ -658,15 +750,35 @@ function App() {
           created_by: currentUser.id,
           colony_admin_id: currentUser.id,
         })
-        .select("id,name,address,city,location_context,lat,lng,status,asl_declared,registry_number,health_last_updated,health_record_date,volunteer_name,volunteer_phone,volunteer_call_hours,total_males,sterilized_males,unsterilized_males,total_females,sterilized_females,unsterilized_females,total_sterilized,total_unsterilized,health_notes,source_label,source_url,created_by,colony_admin_id,created_at,admin_profile:profiles!colonies_colony_admin_id_fkey(username,email,avatar_url)")
+        .select("id,name,address,city,location_context,lat,lng,status,asl_declared,registry_number,health_last_updated,health_record_date,volunteer_name,volunteer_phone,volunteer_call_hours,total_males,sterilized_males,unsterilized_males,total_females,sterilized_females,unsterilized_females,total_sterilized,total_unsterilized,health_notes,source_label,source_url,photo_url,created_by,colony_admin_id,created_at,admin_profile:profiles!colonies_colony_admin_id_fkey(username,email,avatar_url)")
         .single();
 
       if (error) throw error;
 
-      const mapped = mapDbColony(data);
+      let savedColony = data;
+      if (newColony.photoFile) {
+        const photoUrl = await uploadPublicImage(
+          supabase,
+          "colony-photos",
+          newColony.photoFile,
+          `colonies/${data.id}`,
+        );
+        if (photoUrl) {
+          const { data: photoData } = await supabase
+            .from("colonies")
+            .update({ photo_url: photoUrl })
+            .eq("id", data.id)
+            .select("id,name,address,city,location_context,lat,lng,status,asl_declared,registry_number,health_last_updated,health_record_date,volunteer_name,volunteer_phone,volunteer_call_hours,total_males,sterilized_males,unsterilized_males,total_females,sterilized_females,unsterilized_females,total_sterilized,total_unsterilized,health_notes,source_label,source_url,photo_url,created_by,colony_admin_id,created_at,admin_profile:profiles!colonies_colony_admin_id_fkey(username,email,avatar_url)")
+            .single();
+          if (photoData) savedColony = photoData;
+        }
+      }
+
+      const mapped = mapDbColony(savedColony);
       setColonies((items) => [mapped, ...items]);
       setSelectedId(mapped.id);
       setDataStatus(`Colonia "${mapped.name}" salvata su Supabase.`);
+      await notifyAdmins("new_colony", "Nuova colonia", `${mapped.name} registrata da ${currentUser.username}`);
       return true;
     } catch (error) {
       setDataStatus(`Errore creazione colonia: ${error.message}`);
@@ -725,6 +837,8 @@ function App() {
                 ...item,
                 ...cleaned,
                 zone: `${cleaned.address} - ${cleaned.city}`,
+                photoUrl: cleaned.photoPreview || cleaned.photoUrl || item.photoUrl,
+                photos: [cleaned.photoPreview || cleaned.photoUrl || item.photoUrl || colonyPlaceholder],
                 updated: "adesso",
               }
             : item,
@@ -736,6 +850,16 @@ function App() {
 
     setDataBusy(true);
     try {
+      let photoUrl = cleaned.photoUrl || "";
+      if (cleaned.photoFile) {
+        photoUrl = await uploadPublicImage(
+          supabase,
+          "colony-photos",
+          cleaned.photoFile,
+          `colonies/${colonyId}`,
+        );
+      }
+
       const { data, error } = await supabase
         .from("colonies")
         .update({
@@ -762,9 +886,10 @@ function App() {
           total_sterilized: cleaned.totalSterilized,
           total_unsterilized: cleaned.totalUnsterilized,
           health_notes: cleaned.healthNotes?.trim() || null,
+          photo_url: photoUrl || null,
         })
         .eq("id", colonyId)
-        .select("id,name,address,city,location_context,lat,lng,status,asl_declared,registry_number,health_last_updated,health_record_date,volunteer_name,volunteer_phone,volunteer_call_hours,total_males,sterilized_males,unsterilized_males,total_females,sterilized_females,unsterilized_females,total_sterilized,total_unsterilized,health_notes,source_label,source_url,created_by,colony_admin_id,created_at,admin_profile:profiles!colonies_colony_admin_id_fkey(username,email,avatar_url)")
+        .select("id,name,address,city,location_context,lat,lng,status,asl_declared,registry_number,health_last_updated,health_record_date,volunteer_name,volunteer_phone,volunteer_call_hours,total_males,sterilized_males,unsterilized_males,total_females,sterilized_females,unsterilized_females,total_sterilized,total_unsterilized,health_notes,source_label,source_url,photo_url,created_by,colony_admin_id,created_at,admin_profile:profiles!colonies_colony_admin_id_fkey(username,email,avatar_url)")
         .single();
 
       if (error) throw error;
@@ -820,6 +945,7 @@ function App() {
           },
         });
         if (error) throw error;
+        await notifyAdmins("new_user", "Nuovo utente", `${authForm.username} ha creato un account`);
         setAuthStatus("Account creato. Se Supabase richiede conferma email, controlla la posta.");
       } else {
         const { error } = await supabase.auth.signInWithPassword({
@@ -842,6 +968,7 @@ function App() {
     setCurrentUser(null);
     setFriendRequests([]);
     setMessages([]);
+    setNotifications([]);
     setRegisterOpen(false);
     setAuthMode("login");
     setAuthStatus("Sessione chiusa.");
@@ -862,7 +989,7 @@ function App() {
       notes: "",
       sterilized: null,
       earTip: false,
-      photo: catPhotos[0],
+      photo: catPlaceholder,
     };
     setCatsByColony((items) => ({
       ...items,
@@ -1190,8 +1317,19 @@ function App() {
       ...patch,
       name: patch.name?.trim() || "Senza nome",
     };
+    const sterilizationYear = cleaned.sterilizationDate
+      ? Number(cleaned.sterilizationDate.slice(0, 4))
+      : null;
 
-    const localCat = { ...cleaned, id: catId, colonyId: selected.id };
+    const localPreview = cleaned.photoPreview || cleaned.photoUrl;
+    const localCat = {
+      ...cleaned,
+      id: catId,
+      colonyId: selected.id,
+      sterilizationYear: sterilizationYear ?? "",
+      photo: localPreview || cleaned.photo || catPlaceholder,
+      photoUrl: localPreview || cleaned.photoUrl || "",
+    };
     setCatsByColony((items) => ({
       ...items,
       [selected.id]: (items[selected.id] ?? []).map((cat) =>
@@ -1210,7 +1348,7 @@ function App() {
       notes: cleaned.notes || null,
       sterilized: cleaned.sterilized === "" ? null : cleaned.sterilized,
       sterilization_date: cleaned.sterilizationDate || null,
-      sterilization_year: cleaned.sterilizationYear ? Number(cleaned.sterilizationYear) : null,
+      sterilization_year: sterilizationYear,
       ear_tip: Boolean(cleaned.earTip),
       provenance: cleaned.provenance || null,
       already_present: cleaned.alreadyPresent === "" ? null : cleaned.alreadyPresent,
@@ -1221,11 +1359,13 @@ function App() {
       created_by: currentUser.id,
     };
 
+    if (cleaned.photoUrl && !cleaned.photoFile) payload.photo_url = cleaned.photoUrl;
+
     const query = String(catId).startsWith("local-")
       ? supabase.from("cats").insert(payload)
       : supabase.from("cats").update(payload).eq("id", catId);
     const { data, error } = await query
-      .select("id,colony_id,name,sex,status,notes,sterilized,sterilization_date,sterilization_year,ear_tip,provenance,already_present,description,approximate_birth_date,removal_reason,removed_at,created_at")
+      .select("id,colony_id,name,sex,status,notes,sterilized,sterilization_date,sterilization_year,ear_tip,provenance,already_present,description,approximate_birth_date,removal_reason,removed_at,photo_url,created_at")
       .single();
 
     if (error) {
@@ -1233,12 +1373,34 @@ function App() {
       return false;
     }
 
+    let savedCat = data;
+
+    if (cleaned.photoFile) {
+      const photoUrl = await uploadPublicImage(
+        supabase,
+        "cat-photos",
+        cleaned.photoFile,
+        `cats/${savedCat.id}`,
+      );
+      if (photoUrl) {
+        const { data: photoData, error: photoError } = await supabase
+          .from("cats")
+          .update({ photo_url: photoUrl })
+          .eq("id", savedCat.id)
+          .select("id,colony_id,name,sex,status,notes,sterilized,sterilization_date,sterilization_year,ear_tip,provenance,already_present,description,approximate_birth_date,removal_reason,removed_at,photo_url,created_at")
+          .single();
+        if (!photoError && photoData) savedCat = photoData;
+      }
+    }
+
+    const mappedCat = mapDbCat(savedCat);
     setCatsByColony((items) => ({
       ...items,
       [selected.id]: (items[selected.id] ?? []).map((cat) =>
-        cat.id === catId ? mapDbCat(data) : cat,
+        cat.id === catId ? mappedCat : cat,
       ),
     }));
+    await notifyAdmins("new_cat", "Nuovo gatto", `${mappedCat.name} aggiunto a ${selected.name}`);
     return true;
   }
 
@@ -1283,16 +1445,20 @@ function App() {
       return false;
     }
     setReports((items) => [mapDbReports([data], colonies)[0], ...items.filter((item) => item.id !== report.id)]);
+    await notifyAdmins("rescue_request", "Richiesta di soccorso", `${report.title} - ${report.colony}`);
     return true;
   }
 
   return (
     <main className="app-shell">
-      <Sidebar activeSection={activeSection} onSectionChange={setActiveSection} />
+      <Sidebar activeSection={activeSection} onSectionChange={setActiveSection} counts={menuCounts} />
       <section className="workspace">
         <Topbar
           currentUser={currentUser}
           isAuthenticated={isAuthenticated}
+          notifications={notifications}
+          isNotificationsOpen={isNotificationsOpen}
+          setNotificationsOpen={setNotificationsOpen}
           onOpenAuth={() => setRegisterOpen(true)}
           onLogout={signOut}
         />
@@ -1429,7 +1595,7 @@ function App() {
   );
 }
 
-function Sidebar({ activeSection, onSectionChange }) {
+function Sidebar({ activeSection, onSectionChange, counts }) {
   return (
     <aside className="sidebar">
       <div className="brand">
@@ -1445,8 +1611,7 @@ function Sidebar({ activeSection, onSectionChange }) {
           >
             <Icon size={19} />
             <span>{label}</span>
-            {label === "Segnalazioni" && <strong>8</strong>}
-            {label === "Messaggi" && <strong>2</strong>}
+            {Boolean(counts[label]) && <strong>{counts[label]}</strong>}
           </button>
         ))}
       </nav>
@@ -1473,7 +1638,9 @@ function Sidebar({ activeSection, onSectionChange }) {
   );
 }
 
-function Topbar({ currentUser, isAuthenticated, onOpenAuth, onLogout }) {
+function Topbar({ currentUser, isAuthenticated, notifications, isNotificationsOpen, setNotificationsOpen, onOpenAuth, onLogout }) {
+  const unreadCount = notifications.filter((item) => !item.read).length;
+
   return (
     <header className="topbar">
       <label className="search-box">
@@ -1483,10 +1650,29 @@ function Topbar({ currentUser, isAuthenticated, onOpenAuth, onLogout }) {
       </label>
       <div className="account">
         {isAuthenticated && (
-          <button className="icon-btn alert" aria-label="Notifiche">
-            <Bell size={19} />
-            <span>3</span>
-          </button>
+          <div className="notification-wrap">
+            <button
+              className="icon-btn alert"
+              aria-label="Notifiche"
+              onClick={() => setNotificationsOpen((value) => !value)}
+            >
+              <Bell size={19} />
+              {unreadCount > 0 && <span>{unreadCount}</span>}
+            </button>
+            {isNotificationsOpen && (
+              <div className="notification-popover">
+                <h2>Notifiche</h2>
+                {notifications.map((item) => (
+                  <article key={item.id}>
+                    <strong>{item.title}</strong>
+                    <p>{item.body}</p>
+                    <small>{item.time}</small>
+                  </article>
+                ))}
+                {!notifications.length && <p>Nessuna notifica.</p>}
+              </div>
+            )}
+          </div>
         )}
         {isAuthenticated ? (
           <>
@@ -1745,6 +1931,15 @@ function ColonyEditPanel({ selected, onUpdateColony }) {
     const value = event.target.type === "checkbox" ? event.target.checked : event.target.value;
     setDraft((current) => ({ ...current, [field]: value }));
   };
+  const updatePhoto = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setDraft((current) => ({
+      ...current,
+      photoFile: file,
+      photoPreview: URL.createObjectURL(file),
+    }));
+  };
 
   async function geocodeAddress() {
     const query = [draft.address, draft.city, "Italia"].filter(Boolean).join(", ");
@@ -1791,6 +1986,11 @@ function ColonyEditPanel({ selected, onUpdateColony }) {
         <h2>Modifica colonia</h2>
       </div>
       <div className="edit-grid">
+        <label className="photo-field">
+          Foto colonia
+          <PhotoImage photo={draft.photoPreview || draft.photoUrl || colonyPlaceholder} alt="Foto colonia" />
+          <input type="file" accept="image/*" onChange={updatePhoto} />
+        </label>
         <label>
           Nome
           <input value={draft.name} onChange={updateField("name")} />
@@ -1907,6 +2107,8 @@ function makeColonyDraft(selected) {
     totalSterilized: selected.totalSterilized ?? 0,
     totalUnsterilized: selected.totalUnsterilized ?? 0,
     healthNotes: selected.healthNotes ?? "",
+    photoUrl: selected.photoUrl ?? "",
+    photoPreview: selected.photoUrl ?? "",
   };
 }
 
@@ -1993,11 +2195,24 @@ function CatEditPanel({ cat, onSaveCat }) {
       [field]: type === "checkbox" ? checked : value,
     }));
   };
+  const updatePhoto = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setDraft((current) => ({
+      ...current,
+      photoFile: file,
+      photoPreview: URL.createObjectURL(file),
+    }));
+  };
 
   async function submit(event) {
     event.preventDefault();
-    const saved = await onSaveCat(cat.id, draft);
-    setStatus(saved ? "Scheda gatto salvata." : "Salvataggio non riuscito.");
+    try {
+      const saved = await onSaveCat(cat.id, draft);
+      setStatus(saved ? "Scheda gatto salvata." : "Salvataggio non riuscito.");
+    } catch (error) {
+      setStatus(error.message ?? "Salvataggio non riuscito.");
+    }
   }
 
   return (
@@ -2006,6 +2221,11 @@ function CatEditPanel({ cat, onSaveCat }) {
         <h2>Modifica gatto</h2>
       </div>
       <div className="edit-grid">
+        <label className="photo-field">
+          Foto gatto
+          <PhotoImage photo={draft.photoPreview || draft.photoUrl || catPlaceholder} alt="Foto gatto" />
+          <input type="file" accept="image/*" onChange={updatePhoto} />
+        </label>
         <label>
           Nome
           <input value={draft.name} onChange={updateField("name")} />
@@ -2025,10 +2245,6 @@ function CatEditPanel({ cat, onSaveCat }) {
         <label>
           Data sterilizzazione
           <input type="date" value={draft.sterilizationDate} onChange={updateField("sterilizationDate")} />
-        </label>
-        <label>
-          Anno sterilizzazione
-          <input type="number" min="1990" value={draft.sterilizationYear} onChange={updateField("sterilizationYear")} />
         </label>
         <label className="inline-check">
           <input type="checkbox" checked={draft.sterilized === true} onChange={(event) => setDraft((current) => ({ ...current, sterilized: event.target.checked }))} />
@@ -2077,7 +2293,9 @@ function makeCatDraft(cat) {
     notes: cat.notes ?? "",
     sterilized: cat.sterilized ?? "",
     sterilizationDate: cat.sterilizationDate ?? "",
-    sterilizationYear: cat.sterilizationYear ?? "",
+    sterilizationYear: cat.sterilizationDate ? Number(cat.sterilizationDate.slice(0, 4)) : cat.sterilizationYear ?? "",
+    photoUrl: cat.photoUrl ?? "",
+    photoPreview: cat.photoUrl || cat.photo || "",
     earTip: Boolean(cat.earTip),
     provenance: cat.provenance ?? "",
     alreadyPresent: cat.alreadyPresent ?? "",
@@ -2351,6 +2569,8 @@ function ColoniesSection({
     volunteerPhone: "",
     volunteerCallHours: "",
     healthNotes: "",
+    photoFile: null,
+    photoPreview: "",
   });
   const [geocodeStatus, setGeocodeStatus] = useState("");
   const [isGeocoding, setGeocoding] = useState(false);
@@ -2359,6 +2579,15 @@ function ColoniesSection({
   const updateField = (field) => (event) => {
     const value = field === "aslDeclared" ? event.target.checked : event.target.value;
     setNewColony((current) => ({ ...current, [field]: value }));
+  };
+  const updateNewPhoto = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setNewColony((current) => ({
+      ...current,
+      photoFile: file,
+      photoPreview: URL.createObjectURL(file),
+    }));
   };
 
   async function submitColony(event) {
@@ -2381,6 +2610,8 @@ function ColoniesSection({
       volunteerPhone: "",
       volunteerCallHours: "",
       healthNotes: "",
+      photoFile: null,
+      photoPreview: "",
     });
     setCreating(false);
   }
@@ -2433,6 +2664,11 @@ function ColoniesSection({
       </div>
       {isCreating && (
         <form className="create-panel" onSubmit={submitColony}>
+          <label className="photo-field">
+            Foto colonia
+            <PhotoImage photo={newColony.photoPreview || colonyPlaceholder} alt="Foto colonia" />
+            <input type="file" accept="image/*" onChange={updateNewPhoto} />
+          </label>
           <label>
             Nome colonia
             <input
@@ -2615,7 +2851,14 @@ function ColonyFullPanel({
   onSaveCat,
   helpReports,
   onCreateHelpRequest,
+  comments,
+  draft,
+  setDraft,
+  addComment,
 }) {
+  const [activeTab, setActiveTab] = useState("Scheda");
+  const tabs = ["Scheda", "Permessi", "Sanitario", "Foto e gatti", "Discussione"];
+
   return (
     <section className="colony-full-panel">
       <div className="detail-title">
@@ -2640,45 +2883,106 @@ function ColonyFullPanel({
         <Fact icon={ShieldCheck} label="Dichiarata all'ASL" value={selected.aslDeclared ? "Sì" : "No"} />
       </div>
       {!isAuthenticated && <PublicReadOnlyNotice onRequireAuth={onRequireAuth} />}
-      {canEdit && (
+      <div className="tabs">
+        {tabs.map((tab) => (
+          <button
+            key={tab}
+            className={tab === activeTab ? "active" : ""}
+            onClick={() => setActiveTab(tab)}
+          >
+            {tab}
+          </button>
+        ))}
+      </div>
+      {activeTab === "Scheda" && (
+        canEdit ? <ColonyEditPanel selected={selected} onUpdateColony={onUpdateColony} /> : <SanitaryPanel selected={selected} />
+      )}
+      {activeTab === "Permessi" && canEdit && (
+        <AdminPanel
+          selected={selected}
+          participationRequests={participationRequests}
+          onToggleAsl={onToggleAsl}
+          onReplaceAdmin={onReplaceAdmin}
+          onApproveParticipation={onApproveParticipation}
+        />
+      )}
+      {activeTab === "Sanitario" && <SanitaryPanel selected={selected} />}
+      {activeTab === "Foto e gatti" && (
         <>
-          <AdminPanel
-            selected={selected}
-            participationRequests={participationRequests}
-            onToggleAsl={onToggleAsl}
-            onReplaceAdmin={onReplaceAdmin}
-            onApproveParticipation={onApproveParticipation}
-          />
-          <ColonyEditPanel selected={selected} onUpdateColony={onUpdateColony} />
+          <MediaStrip photos={selected.photos} title="Foto della colonia" />
+          <section className="cats-section">
+            <div className="section-title">
+              <h2>Gatti della colonia ({cats.length || selected.cats})</h2>
+            </div>
+            {cats.length > 0 ? (
+              <div className="cat-cards">
+                {cats.map((cat) => (
+                  <article className="cat-card" key={cat.id}>
+                    <PhotoImage photo={cat.photo} alt={cat.name} />
+                    <strong>{cat.name}</strong>
+                    <span>{cat.sex}</span>
+                    <small>{cat.notes || cat.status}</small>
+                    <ShieldCheck size={18} />
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="empty-state">
+                <Cat size={26} />
+                <strong>Nessun gatto censito</strong>
+              </div>
+            )}
+          </section>
+          {canEdit && cats.length > 0 && <CatEditPanel cat={cats[0]} onSaveCat={onSaveCat} />}
         </>
       )}
-      <HelpFeed reports={helpReports} selected={selected} canEdit={canEdit} onCreateHelpRequest={onCreateHelpRequest} />
-      <SanitaryPanel selected={selected} />
-      <MediaStrip photos={selected.photos} title="Foto della colonia" />
-      <section className="cats-section">
-        <div className="section-title">
-          <h2>Gatti della colonia ({cats.length || selected.cats})</h2>
+      {activeTab === "Discussione" && (
+        <>
+          <HelpFeed reports={helpReports} selected={selected} canEdit={canEdit} onCreateHelpRequest={onCreateHelpRequest} />
+          <ColonyDiscussionPanel
+            isAuthenticated={isAuthenticated}
+            comments={comments}
+            draft={draft}
+            setDraft={setDraft}
+            addComment={addComment}
+          />
+        </>
+      )}
+    </section>
+  );
+}
+
+function ColonyDiscussionPanel({ isAuthenticated, comments, draft, setDraft, addComment }) {
+  return (
+    <section className="comments colony-discussion">
+      <h2>Messaggi colonia</h2>
+      {isAuthenticated && (
+        <div className="comment-input">
+          <PhotoImage photo={catPlaceholder} alt="" />
+          <input
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => event.key === "Enter" && addComment()}
+            placeholder="Scrivi un messaggio sulla colonia..."
+          />
+          <button aria-label="Carica foto">
+            <Camera size={17} />
+          </button>
+          <button onClick={addComment}>Invia</button>
         </div>
-        {cats.length > 0 ? (
-          <div className="cat-cards">
-            {cats.map((cat) => (
-              <article className="cat-card" key={cat.id}>
-                <PhotoImage photo={cat.photo} alt={cat.name} />
-                <strong>{cat.name}</strong>
-                <span>{cat.sex}</span>
-                <small>{cat.notes || cat.status}</small>
-                <ShieldCheck size={18} />
-              </article>
-            ))}
+      )}
+      {!comments.length && <p className="empty-copy">Nessun messaggio sulla colonia.</p>}
+      {comments.map((comment, index) => (
+        <article className="comment" key={`${comment}-${index}`}>
+          <PhotoImage photo={catPlaceholder} alt="" />
+          <div>
+            <strong>Utente</strong>
+            <span>{index === 0 ? "adesso" : "oggi"}</span>
+            <p>{comment}</p>
+            {isAuthenticated && <button>Rispondi</button>}
           </div>
-        ) : (
-          <div className="empty-state">
-            <Cat size={26} />
-            <strong>Nessun gatto censito</strong>
-          </div>
-        )}
-      </section>
-      {canEdit && cats.length > 0 && <CatEditPanel cat={cats[0]} onSaveCat={onSaveCat} />}
+        </article>
+      ))}
     </section>
   );
 }
@@ -3141,7 +3445,7 @@ function MobilePreview({ selected, onAddCat, onReportKitten, canEdit }) {
 }
 
 function PhotoImage({ photo, alt }) {
-  return <img src={photo} alt={alt} />;
+  return <img src={photo || catPlaceholder} alt={alt} />;
 }
 
 createRoot(document.getElementById("root")).render(<App />);

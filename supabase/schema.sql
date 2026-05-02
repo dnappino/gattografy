@@ -68,6 +68,7 @@ create table public.colonies (
   health_notes text,
   source_label text,
   source_url text,
+  photo_url text,
   created_by uuid not null references public.profiles(id),
   colony_admin_id uuid not null references public.profiles(id),
   created_at timestamptz not null default now(),
@@ -112,6 +113,7 @@ create table public.cats (
   sterilized boolean,
   sterilization_date date,
   sterilization_year integer,
+  photo_url text,
   ear_tip boolean not null default false,
   provenance text,
   already_present boolean,
@@ -184,6 +186,17 @@ create table public.forum_posts (
   created_at timestamptz not null default now()
 );
 
+create table public.notifications (
+  id uuid primary key default gen_random_uuid(),
+  recipient_id uuid not null references public.profiles(id) on delete cascade,
+  actor_id uuid references public.profiles(id) on delete set null,
+  type text not null,
+  title text not null,
+  body text,
+  is_read boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
 create or replace function public.is_site_admin()
 returns boolean
 language sql
@@ -231,6 +244,7 @@ alter table public.comments enable row level security;
 alter table public.messages enable row level security;
 alter table public.forum_threads enable row level security;
 alter table public.forum_posts enable row level security;
+alter table public.notifications enable row level security;
 
 create policy "profiles are readable by authenticated users"
 on public.profiles for select
@@ -392,3 +406,19 @@ on public.forum_posts for update
 to authenticated
 using (author_id = auth.uid() or public.is_site_admin())
 with check (author_id = auth.uid() or public.is_site_admin());
+
+create policy "users read own notifications"
+on public.notifications for select
+to authenticated
+using (recipient_id = auth.uid() or public.is_site_admin());
+
+create policy "authenticated users create notifications"
+on public.notifications for insert
+to authenticated
+with check (actor_id = auth.uid() or actor_id is null or public.is_site_admin());
+
+create policy "users update own notifications"
+on public.notifications for update
+to authenticated
+using (recipient_id = auth.uid())
+with check (recipient_id = auth.uid());
