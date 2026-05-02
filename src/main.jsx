@@ -3096,7 +3096,13 @@ function ColonyFullPanel({
   );
 }
 
-function ColonyDiscussionPanel({ isAuthenticated, comments, draft, setDraft, addComment }) {
+function ColonyDiscussionPanel({
+  isAuthenticated,
+  comments = [],
+  draft = "",
+  setDraft = () => {},
+  addComment = () => {},
+}) {
   return (
     <section className="comments colony-discussion">
       <h2>Messaggi colonia</h2>
