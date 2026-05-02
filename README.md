@@ -27,7 +27,25 @@ La cartella da pubblicare è `dist`.
 
 ## Pubblicazione gratuita
 
-Opzione semplice:
+Procedura operativa corrente: non far buildare Netlify a ogni push GitHub.
+
+GitHub resta il repository del codice sorgente, ma la pubblicazione si fa caricando su Netlify la cartella `dist` gia' compilata in locale.
+
+```bash
+npm run build
+```
+
+Poi pubblica `dist` con deploy manuale Netlify, oppure con Netlify CLI:
+
+```bash
+netlify deploy --prod --dir=dist --no-build
+```
+
+Usare `--no-build` e' importante: indica a Netlify di non rieseguire la build e riduce il consumo dei crediti/build minutes.
+
+Se il sito resta collegato a GitHub con auto-build attiva, usare `[skip netlify]` nel messaggio di commit quando non si vuole pubblicare.
+
+La procedura con build automatica sotto e' da evitare salvo decisione esplicita:
 
 1. Carica il progetto su GitHub con nome `gattografy`.
 2. Collega il repository a Netlify, Vercel o Cloudflare Pages.
