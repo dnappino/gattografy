@@ -7,7 +7,7 @@ create type public.report_status as enum ('open', 'checking', 'in_progress', 'cl
 create type public.report_type as enum ('sighting', 'birth', 'problem', 'rescue');
 
 create table public.profiles (
-  id uuid primary key references auth.users(id) on delete cascade,
+  id uuid primary key,
   username text not null unique,
   email text not null,
   avatar_url text,

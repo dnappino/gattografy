@@ -18,6 +18,9 @@ alter table public.colonies
   add column if not exists source_label text,
   add column if not exists source_url text;
 
+alter table public.profiles
+  drop constraint if exists profiles_id_fkey;
+
 alter table public.cats
   add column if not exists sterilized boolean,
   add column if not exists sterilization_date date,
@@ -42,7 +45,21 @@ delete from public.colonies;
 do $$
 declare
   admin_id uuid;
+  default_admin_id uuid := '00000000-0000-0000-0000-000000000001';
 begin
+  insert into public.profiles (id, username, email, role)
+  select
+    u.id,
+    coalesce(nullif(u.raw_user_meta_data ->> 'username', ''), split_part(u.email, '@', 1)),
+    u.email,
+    'user'
+  from auth.users u
+  where not exists (
+    select 1
+    from public.profiles p
+    where p.id = u.id
+  );
+
   select id into admin_id
   from public.profiles
   where username = 'ilaria_nappino'
@@ -52,12 +69,23 @@ begin
   if admin_id is null then
     select id into admin_id
     from public.profiles
+    where role = 'site_admin'
     order by created_at asc
     limit 1;
   end if;
 
   if admin_id is null then
-    raise exception 'Crea o registra almeno un utente prima di eseguire il seed colonie.';
+    insert into public.profiles (id, username, email, role)
+    values (
+      default_admin_id,
+      'admin_default',
+      'admin_default@gattografy.local',
+      'site_admin'
+    )
+    on conflict (id) do update
+      set role = 'site_admin';
+
+    admin_id := default_admin_id;
   end if;
 
   insert into public.colonies (
