@@ -27,15 +27,44 @@ La cartella da pubblicare è `dist`.
 
 ## Pubblicazione gratuita
 
-Procedura operativa corrente: non far buildare Netlify a ogni push GitHub.
+Procedura operativa corrente: GitHub Pages e' il target principale.
 
-GitHub resta il repository del codice sorgente, ma la pubblicazione si fa caricando su Netlify la cartella `dist` gia' compilata in locale.
+Netlify non va usato come target principale perche' puo' sospendere il sito quando raggiunge i limiti del piano free. GitHub Pages serve bene questa app statica.
 
 ```bash
-npm run build
+npm run build:github
 ```
 
-Poi pubblica `dist` con deploy manuale Netlify, oppure con Netlify CLI:
+La build va pubblicata sul branch `gh-pages` del repository `dnappino/gattografy`.
+
+URL previsto:
+
+```text
+https://dnappino.github.io/gattografy/
+```
+
+Prima attivazione manuale su GitHub:
+
+1. Vai su `Settings` > `Pages` del repository.
+2. In `Build and deployment`, scegli `Deploy from a branch`.
+3. Seleziona branch `gh-pages` e cartella `/ (root)`.
+4. Salva.
+
+Per Supabase Auth aggiungere anche questo URL in `Authentication` > `URL Configuration`:
+
+```text
+https://dnappino.github.io/gattografy/
+```
+
+e tra i redirect consentiti:
+
+```text
+https://dnappino.github.io/gattografy/**
+```
+
+### Netlify solo come fallback
+
+Se si decide esplicitamente di riprovare Netlify, non far buildare Netlify a ogni push GitHub. GitHub resta il repository del codice sorgente, ma la pubblicazione si fa caricando su Netlify la cartella `dist` gia' compilata in locale.
 
 ```bash
 netlify deploy --prod --dir=dist --no-build
