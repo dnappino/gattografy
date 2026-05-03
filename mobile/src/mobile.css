@@ -60,6 +60,27 @@ textarea {
   color: var(--ink);
 }
 
+.bell-button {
+  position: relative;
+}
+
+.bell-button small {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--coral);
+  color: #fff;
+  font-size: 0.65rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+}
+
 .brand {
   display: inline-flex;
   align-items: center;
@@ -278,3 +299,56 @@ textarea {
   font-size: 0.84rem;
 }
 
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(11, 26, 20, 0.35);
+  display: grid;
+  place-items: center;
+  z-index: 30;
+  padding: 12px;
+}
+
+.menu-sheet,
+.notify-sheet {
+  width: min(420px, 100%);
+  max-height: min(80vh, 680px);
+  overflow: auto;
+}
+
+.overlay-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.menu-list {
+  display: grid;
+  gap: 8px;
+}
+
+.menu-list button {
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--ink);
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+}
+
+.notify-actions {
+  margin-bottom: 8px;
+}
+
+.notify-row.read {
+  opacity: 0.7;
+}
+
+.notify-row p {
+  margin: 0;
+  color: var(--muted);
+}

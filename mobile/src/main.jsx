@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Bell, Cat, LifeBuoy, MapPin, Menu, PawPrint, Plus, Send, UserRound } from "lucide-react";
+import { Bell, Cat, MapPin, Menu, PawPrint, Plus, Send, UserRound, X } from "lucide-react";
 import { DivIcon } from "leaflet";
 import { MapContainer, Marker, TileLayer } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
@@ -62,7 +62,10 @@ function App() {
   const [tab, setTab] = useState("home");
   const [sessionUser, setSessionUser] = useState(null);
   const [showLogin, setShowLogin] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
   const [status, setStatus] = useState("");
+  const [notifications, setNotifications] = useState([]);
   const [colonies, setColonies] = useState([]);
   const [cats, setCats] = useState([]);
   const [selectedId, setSelectedId] = useState("");
@@ -93,6 +96,14 @@ function App() {
     loadCats(selected.id);
   }, [selected?.id]);
 
+  useEffect(() => {
+    if (!sessionUser?.id) {
+      setNotifications([]);
+      return;
+    }
+    loadNotifications(sessionUser.id);
+  }, [sessionUser?.id]);
+
   async function loadColonies() {
     const supabase = await getSupabaseClient();
     if (!supabase) return;
@@ -121,6 +132,48 @@ function App() {
     setCats((data ?? []).map(mapDbCat));
   }
 
+  async function loadNotifications(userId) {
+    const supabase = await getSupabaseClient();
+    if (!supabase || !userId) return;
+    const { data, error } = await supabase
+      .from("notifications")
+      .select("id,title,body,is_read,created_at,type")
+      .eq("recipient_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(40);
+    if (error) return;
+    setNotifications((data ?? []).map((item) => ({
+      id: item.id,
+      title: item.title || "Notifica",
+      body: item.body || "",
+      read: Boolean(item.is_read),
+      type: item.type || "",
+      time: item.created_at,
+    })));
+  }
+
+  async function markNotificationRead(notificationId) {
+    const supabase = await getSupabaseClient();
+    setNotifications((items) => items.map((item) => (item.id === notificationId ? { ...item, read: true } : item)));
+    if (!supabase || !sessionUser?.id) return;
+    await supabase
+      .from("notifications")
+      .update({ is_read: true })
+      .eq("id", notificationId)
+      .eq("recipient_id", sessionUser.id);
+  }
+
+  async function markAllNotificationsRead() {
+    const supabase = await getSupabaseClient();
+    setNotifications((items) => items.map((item) => ({ ...item, read: true })));
+    if (!supabase || !sessionUser?.id) return;
+    await supabase
+      .from("notifications")
+      .update({ is_read: true })
+      .eq("recipient_id", sessionUser.id)
+      .eq("is_read", false);
+  }
+
   async function requireAuth(actionFn) {
     if (!sessionUser?.id) {
       setShowLogin(true);
@@ -129,15 +182,22 @@ function App() {
     await actionFn();
   }
 
+  const unreadCount = notifications.filter((item) => !item.read).length;
+  const openFromMenu = (nextTab) => {
+    setShowMenu(false);
+    setTab(nextTab);
+  };
+
   return (
     <main className="mobile-app">
       <section className="mobile-card mobile-topbar">
-        <button className="icon-button" onClick={() => setAction("colony")}>
+        <button className="icon-button" onClick={() => setShowMenu(true)}>
           <Menu size={18} />
         </button>
         <span className="brand"><Cat size={18} /> gattografy</span>
-        <button className="icon-button" onClick={() => setShowLogin(true)}>
+        <button className="icon-button bell-button" onClick={() => (sessionUser?.id ? setShowNotifications(true) : setShowLogin(true))}>
           <Bell size={18} />
+          {unreadCount > 0 && <small>{unreadCount > 99 ? "99+" : unreadCount}</small>}
         </button>
       </section>
 
@@ -186,7 +246,7 @@ function App() {
           <div className="quick-actions">
             <button onClick={() => requireAuth(async () => { setAction("cat"); setTab("new"); })}>Aggiungi un gatto</button>
             <button onClick={() => requireAuth(async () => { setAction("birth"); setTab("report"); })}>Segnala cucciolata</button>
-            <button onClick={() => requireAuth(async () => { setAction("rescue"); setTab("report"); })}>Richiedi aiuto</button>
+            <button onClick={() => requireAuth(async () => { setAction("rescue"); setTab("report"); })}>Segnalazione</button>
           </div>
           {status && <p className="hint">{status}</p>}
         </section>
@@ -231,6 +291,48 @@ function App() {
             setShowLogin(false);
           }}
         />
+      )}
+
+      {showMenu && (
+        <section className="overlay">
+          <div className="mobile-card sheet menu-sheet">
+            <div className="overlay-head">
+              <h2>Menu</h2>
+              <button className="icon-button" onClick={() => setShowMenu(false)}><X size={16} /></button>
+            </div>
+            <div className="menu-list">
+              <button onClick={() => openFromMenu("home")}><MapPin size={16} />Mappa</button>
+              <button onClick={() => openFromMenu("new")}><Plus size={16} />Nuovo</button>
+              <button onClick={() => openFromMenu("report")}><Send size={16} />Segnala</button>
+              <button onClick={() => openFromMenu("profile")}><UserRound size={16} />Profilo</button>
+              <button onClick={() => { setAction("colony"); openFromMenu("new"); }}><Menu size={16} />Nuova colonia</button>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {showNotifications && (
+        <section className="overlay">
+          <div className="mobile-card sheet notify-sheet">
+            <div className="overlay-head">
+              <h2>Notifiche</h2>
+              <button className="icon-button" onClick={() => setShowNotifications(false)}><X size={16} /></button>
+            </div>
+            <div className="notify-actions">
+              <button className="ghost" onClick={markAllNotificationsRead}>Segna tutte come lette</button>
+            </div>
+            <div className="list">
+              {notifications.length === 0 && <p className="hint">Nessuna notifica.</p>}
+              {notifications.map((item) => (
+                <article key={item.id} className={item.read ? "notify-row read" : "notify-row"}>
+                  <strong>{item.title}</strong>
+                  <p>{item.body}</p>
+                  {!item.read && <button className="ghost" onClick={() => markNotificationRead(item.id)}>Segna come letta</button>}
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
       )}
 
       <nav className="bottom-nav">
@@ -628,4 +730,3 @@ function LoginSheet({ onClose, onLoginSuccess }) {
 }
 
 createRoot(document.getElementById("root")).render(<App />);
-

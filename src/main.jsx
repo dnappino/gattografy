@@ -523,6 +523,9 @@ function App() {
   const filteredColonies = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     if (!query) return colonies;
+    if (query === "con cuccioli" || query === "cuccioli") {
+      return colonies.filter((colony) => Number(colony.kittens || 0) > 0);
+    }
     return colonies.filter((colony) =>
       [colony.name, colony.zone, colony.admin, colony.caretaker, colony.status]
         .filter(Boolean)
@@ -2392,6 +2395,7 @@ function App() {
             }}
             onAddCat={addCat}
             onReportKitten={reportKitten}
+            onRemoveKitten={removeKitten}
             comments={comments}
             draft={draft}
             setDraft={setDraft}
@@ -2808,6 +2812,7 @@ function MapSection({
   onOpenColony,
   onAddCat,
   onReportKitten,
+  onRemoveKitten,
   comments,
   draft,
   setDraft,
@@ -2897,6 +2902,7 @@ function MapSection({
         onReportTarget={onReportTarget}
         onAddCat={onAddCat}
         onReportKitten={onReportKitten}
+        onRemoveKitten={onRemoveKitten}
         onOpenReports={onOpenReports}
       />
     </div>
@@ -3103,6 +3109,7 @@ function DetailPanel({
   onReportTarget,
   onAddCat,
   onReportKitten,
+  onRemoveKitten,
   onOpenReports,
 }) {
   const openHelp = helpReports.filter((report) => report.colonyId === selected.id).slice(0, 2);
@@ -3169,9 +3176,13 @@ function DetailPanel({
           <PawPrint size={16} />
           Segnala cucciolata
         </button>
+        <button onClick={onRemoveKitten}>
+          <PawPrint size={16} />
+          Rimuovi cucciolata
+        </button>
         <button onClick={onOpenReports}>
           <Megaphone size={16} />
-          Richiedi aiuto
+          Segnalazione
         </button>
       </div>
       <section className="mini-panel">
@@ -4536,6 +4547,21 @@ function CatsSection({ colonies, catsByColony, canEdit, onSaveCat, onCreateCat, 
     setSightingCat(null);
   }
 
+  function removeKitten() {
+    if (!canEditSelected) {
+      setAuthMode("login");
+      setRegisterOpen(true);
+      return;
+    }
+    setColonies((items) =>
+      items.map((item) =>
+        item.id === selected.id
+          ? { ...item, kittens: Math.max(0, (item.kittens ?? 0) - 1), status: "Attiva", updated: "adesso" }
+          : item,
+      ),
+    );
+  }
+
   return (
     <section className="page-section">
       <PageHeader
@@ -5467,7 +5493,7 @@ function MobileHomeScreen({
       <div className="phone-actions">
         <button onClick={() => runProtected(onOpenCreateCat)}>Aggiungi un gatto</button>
         <button onClick={() => runProtected(onOpenBirthReport)}>Segnala cucciolata</button>
-        <button onClick={() => runProtected(onOpenRescueReport)}>Richiedi aiuto</button>
+        <button onClick={() => runProtected(onOpenRescueReport)}>Segnalazione</button>
       </div>
     </aside>
   );
@@ -5478,5 +5504,7 @@ function PhotoImage({ photo, alt }) {
 }
 
 createRoot(document.getElementById("root")).render(<App />);
+
+
 
 
