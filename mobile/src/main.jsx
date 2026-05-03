@@ -294,7 +294,7 @@ function App() {
       )}
 
       {showMenu && (
-        <section className="overlay">
+        <section className="overlay" onClick={(event) => event.target === event.currentTarget && setShowMenu(false)}>
           <div className="mobile-card sheet menu-sheet">
             <div className="overlay-head">
               <h2>Menu</h2>
@@ -312,7 +312,7 @@ function App() {
       )}
 
       {showNotifications && (
-        <section className="overlay">
+        <section className="overlay" onClick={(event) => event.target === event.currentTarget && setShowNotifications(false)}>
           <div className="mobile-card sheet notify-sheet">
             <div className="overlay-head">
               <h2>Notifiche</h2>

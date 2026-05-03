@@ -305,7 +305,7 @@ textarea {
   background: rgba(11, 26, 20, 0.35);
   display: grid;
   place-items: center;
-  z-index: 30;
+  z-index: 2500;
   padding: 12px;
 }
 
