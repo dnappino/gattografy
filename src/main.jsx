@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { DivIcon } from "leaflet";
 import { MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from "react-leaflet";
@@ -184,6 +184,7 @@ const navItems = [
   ["Colonie", Cat],
   ["Gatti", PawPrint],
   ["Segnalazioni", Megaphone],
+  ["Preferiti", Star],
   ["Messaggi", MessageCircle],
   ["Community", Users],
 ];
@@ -332,6 +333,37 @@ function mapRequestStatus(status) {
   return "In attesa";
 }
 
+function dedupeParticipationRequests(requests = []) {
+  const seen = new Set();
+  return requests.filter((request) => {
+    const identity = request.profileId || request.user || request.id;
+    const key = `${request.colonyId}:${identity}:${request.status}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function dedupeFriendRequests(requests = []) {
+  const seen = new Set();
+  return requests.filter((request) => {
+    const key = request.profileId || request.user || request.id;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function isOwnedByCurrentUser(item, currentUser) {
+  return Boolean(
+    currentUser?.id &&
+      (item?.authorId === currentUser.id ||
+        item?.senderId === currentUser.id ||
+        item?.createdBy === currentUser.id ||
+        item?.fromId === currentUser.id),
+  );
+}
+
 function formatDate(value) {
   if (!value) return "";
   return new Intl.DateTimeFormat("it-IT", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
@@ -416,6 +448,8 @@ function App() {
   const [privateMessages, setPrivateMessages] = useState([]);
   const [forumThreads, setForumThreads] = useState([]);
   const [notifications, setNotifications] = useState([]);
+  const [favoriteItems, setFavoriteItems] = useState([]);
+  const [moderationTarget, setModerationTarget] = useState(null);
   const [changeLog, setChangeLog] = useState([]);
   const [isNotificationsOpen, setNotificationsOpen] = useState(false);
   const [messageDraft, setMessageDraft] = useState("");
@@ -438,6 +472,26 @@ function App() {
   const visibleCats = catsByColony[selected?.id] ?? [];
   const helpReports = reports.filter((report) => report.type === "rescue" || report.type === "problem" || report.type === "adoption_request");
   const defaultColonyId = nearestColonyId(colonies, userPosition, selected?.id);
+  const favoriteColonyIds = useMemo(
+    () => new Set(favoriteItems.filter((item) => item.colonyId).map((item) => item.colonyId)),
+    [favoriteItems],
+  );
+  const favoriteCatIds = useMemo(
+    () => new Set(favoriteItems.filter((item) => item.catId).map((item) => item.catId)),
+    [favoriteItems],
+  );
+  const favoriteColonies = useMemo(
+    () => colonies.filter((colony) => favoriteColonyIds.has(colony.id)),
+    [colonies, favoriteColonyIds],
+  );
+  const allCats = useMemo(
+    () => Object.values(catsByColony).flat(),
+    [catsByColony],
+  );
+  const favoriteCats = useMemo(
+    () => allCats.filter((cat) => favoriteCatIds.has(cat.id)),
+    [allCats, favoriteCatIds],
+  );
   const pendingCollaborationRequests = participationRequests.filter((request) => {
     if (request.status !== "In attesa") return false;
     const colony = colonies.find((item) => item.id === request.colonyId);
@@ -516,6 +570,7 @@ function App() {
     if (!isAuthenticated) return;
     loadSocialData();
     loadNotifications();
+    loadFavorites();
   }, [isAuthenticated, currentUser?.id]);
 
   async function hydrateSupabaseUser(user) {
@@ -671,7 +726,7 @@ function App() {
       })));
       setParticipationRequests((items) => {
         const otherColonies = items.filter((item) => item.colonyId !== colonyId);
-        return [
+        return dedupeParticipationRequests([
           ...(requestRows ?? []).map((row) => ({
             id: row.id,
             colonyId: row.colony_id,
@@ -681,7 +736,7 @@ function App() {
             status: mapRequestStatus(row.status),
           })),
           ...otherColonies,
-        ];
+        ]);
       });
       setChangeLog((changeRows ?? []).map((row) => ({
         id: row.id,
@@ -728,7 +783,7 @@ function App() {
           .order("created_at", { ascending: true }),
         supabase
           .from("forum_threads")
-          .select("id,title,body,category,created_at,author:profiles!forum_threads_author_id_fkey(username),posts:forum_posts(id,body,created_at,author:profiles!forum_posts_author_id_fkey(username))")
+          .select("id,title,body,category,author_id,created_at,author:profiles!forum_threads_author_id_fkey(username),posts:forum_posts(id,author_id,body,created_at,author:profiles!forum_posts_author_id_fkey(username))")
           .order("created_at", { ascending: false })
           .limit(30),
         supabase
@@ -745,29 +800,32 @@ function App() {
       if (participationError) throw participationError;
 
       setProfiles(profileRows ?? []);
-      setFriendRequests((friendRows ?? []).map((row) => {
+      setFriendRequests(dedupeFriendRequests((friendRows ?? []).map((row) => {
         const incoming = row.to_profile_id === currentUser.id;
         return {
           id: row.id,
+          profileId: incoming ? row.from_profile_id : row.to_profile_id,
           user: incoming ? row.from_profile?.username : row.to_profile?.username,
           note: incoming ? "Richiesta ricevuta" : "Richiesta inviata",
           accepted: row.status === "approved",
           incoming,
           status: row.status,
         };
-      }));
-      setParticipationRequests((participationRows ?? []).map((row) => ({
+      })));
+      setParticipationRequests(dedupeParticipationRequests((participationRows ?? []).map((row) => ({
         id: row.id,
         colonyId: row.colony_id,
         profileId: row.profile_id,
         user: row.profile?.username ?? "Utente",
         message: row.message ?? "",
         status: mapRequestStatus(row.status),
-      })));
+      }))));
     setPrivateMessages((directRows ?? []).map((row) => ({
         id: row.id,
         from: row.sender_id === currentUser.id ? currentUser.username : row.sender?.username ?? "Utente",
+        fromId: row.sender_id,
         to: row.recipient_id === currentUser.id ? currentUser.username : row.recipient?.username ?? "Utente",
+        toId: row.recipient_id,
         text: row.body,
         time: formatDate(row.created_at),
       })));
@@ -777,10 +835,12 @@ function App() {
         body: row.body,
         category: row.category,
         author: row.author?.username ?? "Utente",
+        authorId: row.author_id,
         time: formatDate(row.created_at),
         posts: (row.posts ?? []).map((post) => ({
           id: post.id,
           author: post.author?.username ?? "Utente",
+          authorId: post.author_id,
           body: post.body,
           time: formatDate(post.created_at),
         })),
@@ -814,6 +874,147 @@ function App() {
     } catch (error) {
       setDataStatus(`Errore notifiche: ${error.message}`);
     }
+  }
+
+  async function loadFavorites() {
+    const supabase = await getSupabaseClient();
+    if (!supabase || !currentUser?.id) return;
+
+    try {
+      const { data, error } = await supabase
+        .from("favorite_items")
+        .select("id,colony_id,cat_id,created_at")
+        .eq("profile_id", currentUser.id)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      setFavoriteItems((data ?? []).map((row) => ({
+        id: row.id,
+        colonyId: row.colony_id,
+        catId: row.cat_id,
+      })));
+    } catch (error) {
+      setDataStatus(`Preferiti non disponibili: ${error.message}`);
+    }
+  }
+
+  async function markAllNotificationsRead() {
+    setNotifications((items) => items.map((item) => ({ ...item, read: true })));
+
+    const supabase = await getSupabaseClient();
+    if (!supabase || !currentUser?.id) return;
+
+    const { error } = await supabase
+      .from("notifications")
+      .update({ is_read: true })
+      .eq("recipient_id", currentUser.id)
+      .eq("is_read", false);
+
+    if (error) setDataStatus(`Errore notifiche: ${error.message}`);
+  }
+
+  async function markNotificationRead(notificationId) {
+    setNotifications((items) =>
+      items.map((item) => (item.id === notificationId ? { ...item, read: true } : item)),
+    );
+
+    const supabase = await getSupabaseClient();
+    if (!supabase || !currentUser?.id || String(notificationId).startsWith("local-")) return;
+
+    const { error } = await supabase
+      .from("notifications")
+      .update({ is_read: true })
+      .eq("id", notificationId)
+      .eq("recipient_id", currentUser.id);
+    if (error) setDataStatus(`Errore notifica: ${error.message}`);
+  }
+
+  async function toggleFavorite(targetType, targetId) {
+    if (!isAuthenticated || !currentUser?.id) {
+      setAuthMode("login");
+      setRegisterOpen(true);
+      return false;
+    }
+
+    const isColony = targetType === "colony";
+    const existing = favoriteItems.find((item) =>
+      isColony ? item.colonyId === targetId : item.catId === targetId,
+    );
+
+    if (existing) {
+      setFavoriteItems((items) => items.filter((item) => item.id !== existing.id));
+      const supabase = await getSupabaseClient();
+      if (supabase && !String(existing.id).startsWith("local-")) {
+        const { error } = await supabase.from("favorite_items").delete().eq("id", existing.id);
+        if (error) setDataStatus(`Errore preferiti: ${error.message}`);
+      }
+      return true;
+    }
+
+    const localFavorite = {
+      id: `local-${Date.now()}`,
+      colonyId: isColony ? targetId : null,
+      catId: isColony ? null : targetId,
+    };
+    setFavoriteItems((items) => [localFavorite, ...items]);
+
+    const supabase = await getSupabaseClient();
+    if (!supabase) return true;
+
+    const { data, error } = await supabase
+      .from("favorite_items")
+      .upsert(
+        {
+          profile_id: currentUser.id,
+          colony_id: isColony ? targetId : null,
+          cat_id: isColony ? null : targetId,
+        },
+        { onConflict: isColony ? "profile_id,colony_id" : "profile_id,cat_id" },
+      )
+      .select("id,colony_id,cat_id")
+      .single();
+
+    if (error) {
+      setFavoriteItems((items) => items.filter((item) => item.id !== localFavorite.id));
+      setDataStatus(`Errore preferiti: ${error.message}`);
+      return false;
+    }
+
+    setFavoriteItems((items) => [
+      { id: data.id, colonyId: data.colony_id, catId: data.cat_id },
+      ...items.filter((item) => item.id !== localFavorite.id),
+    ]);
+    return true;
+  }
+
+  async function submitModerationReport(payload) {
+    if (!isAuthenticated || !currentUser?.id || !payload?.targetType) {
+      setAuthMode("login");
+      setRegisterOpen(true);
+      return false;
+    }
+
+    const targetLabel = payload.targetLabel || payload.targetType;
+    const body = `${payload.reason}: ${payload.details || "nessun dettaglio"} (${targetLabel})`;
+
+    const supabase = await getSupabaseClient();
+    if (supabase) {
+      try {
+        const { error } = await supabase.from("moderation_reports").insert({
+          reporter_id: currentUser.id,
+          target_type: payload.targetType,
+          target_id: payload.targetId ? String(payload.targetId) : null,
+          reason: payload.reason,
+          details: payload.details || null,
+        });
+        if (error) throw error;
+      } catch (error) {
+        setDataStatus(`Segnalazione moderazione non salvata nel DB: ${error.message}`);
+      }
+    }
+
+    await notifyAdmins("moderation_report", "Nuova segnalazione", body);
+    setModerationTarget(null);
+    return true;
   }
 
   async function notifyAdmins(type, title, body) {
@@ -895,6 +1096,39 @@ function App() {
       summary,
       actor_id: currentUser.id,
     });
+    await notifyFavoriteOwners(colonyId, entityType === "cat" ? entityId : null, "favorite_update", "Aggiornamento preferito", summary);
+  }
+
+  async function notifyFavoriteOwners(colonyId, catId, type, title, body) {
+    const supabase = await getSupabaseClient();
+    if (!supabase) return;
+
+    try {
+      let query = supabase
+        .from("favorite_items")
+        .select("profile_id")
+        .neq("profile_id", currentUser?.id ?? "00000000-0000-0000-0000-000000000000");
+      if (catId) query = query.or(`cat_id.eq.${catId},colony_id.eq.${colonyId}`);
+      else query = query.eq("colony_id", colonyId);
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      const recipients = [...new Set((data ?? []).map((row) => row.profile_id).filter(Boolean))];
+      if (!recipients.length) return;
+
+      await supabase.from("notifications").insert(
+        recipients.map((recipientId) => ({
+          recipient_id: recipientId,
+          actor_id: currentUser?.id ?? null,
+          type,
+          title,
+          body,
+        })),
+      );
+    } catch {
+      // La migrazione preferiti potrebbe non essere ancora stata eseguita.
+    }
   }
 
   async function createColony(newColony) {
@@ -1127,6 +1361,27 @@ function App() {
     } finally {
       setDataBusy(false);
     }
+  }
+
+  async function deleteColony(colonyId) {
+    if (!isSiteAdmin) return false;
+    const colony = colonies.find((item) => item.id === colonyId);
+    const nextSelected = colonies.find((item) => item.id !== colonyId)?.id;
+    setColonies((items) => items.filter((item) => item.id !== colonyId));
+    setFavoriteItems((items) => items.filter((item) => item.colonyId !== colonyId));
+    if (selectedId === colonyId && nextSelected) setSelectedId(nextSelected);
+
+    const supabase = await getSupabaseClient();
+    if (!supabase || !isUuid(colonyId)) return true;
+
+    const { error } = await supabase.from("colonies").delete().eq("id", colonyId);
+    if (error) {
+      setDataStatus(`Errore cancellazione colonia: ${error.message}`);
+      await loadColoniesFromSupabase(supabase);
+      return false;
+    }
+    setDataStatus(`Colonia "${colony?.name ?? "selezionata"}" cancellata.`);
+    return true;
   }
 
   async function handleAuthSubmit(event) {
@@ -1393,10 +1648,57 @@ function App() {
       message: "Richiesta di collaborazione",
       status: "In attesa",
     };
-    setParticipationRequests((items) => [localRequest, ...items]);
+    let shouldInsert = true;
+    setParticipationRequests((items) => {
+      const alreadyPending = items.some(
+        (request) =>
+          request.colonyId === colonyId &&
+          request.status === "In attesa" &&
+          (request.profileId === currentUser.id || request.user === currentUser.username),
+      );
+      if (alreadyPending) {
+        shouldInsert = false;
+        return items;
+      }
+      return dedupeParticipationRequests([localRequest, ...items]);
+    });
+    if (!shouldInsert) return true;
 
     const supabase = await getSupabaseClient();
     if (!supabase || !currentUser?.id) return true;
+
+    const { data: existingRows, error: existingError } = await supabase
+      .from("participation_requests")
+      .select("id,colony_id,profile_id,message,status,created_at,profile:profiles!participation_requests_profile_id_fkey(username)")
+      .eq("colony_id", colonyId)
+      .eq("profile_id", currentUser.id)
+      .eq("status", "pending")
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    if (existingError) {
+      setDataStatus(`Errore richiesta collaborazione: ${existingError.message}`);
+      setParticipationRequests((items) => items.filter((item) => item.id !== localRequest.id));
+      return false;
+    }
+
+    if (existingRows?.length) {
+      const existing = existingRows[0];
+      setParticipationRequests((items) =>
+        dedupeParticipationRequests([
+          {
+            id: existing.id,
+            colonyId: existing.colony_id,
+            profileId: existing.profile_id,
+            user: existing.profile?.username ?? currentUser.username,
+            message: existing.message ?? "",
+            status: mapRequestStatus(existing.status),
+          },
+          ...items.filter((item) => item.id !== localRequest.id),
+        ]),
+      );
+      return true;
+    }
 
     const { data, error } = await supabase
       .from("participation_requests")
@@ -1411,20 +1713,23 @@ function App() {
 
     if (error) {
       setDataStatus(`Errore richiesta collaborazione: ${error.message}`);
+      setParticipationRequests((items) => items.filter((item) => item.id !== localRequest.id));
       return false;
     }
 
-    setParticipationRequests((items) => [
-      {
-        id: data.id,
-        colonyId: data.colony_id,
-        profileId: data.profile_id,
-        user: data.profile?.username ?? currentUser.username,
-        message: data.message ?? "",
-        status: mapRequestStatus(data.status),
-      },
-      ...items.filter((item) => item.id !== localRequest.id),
-    ]);
+    setParticipationRequests((items) =>
+      dedupeParticipationRequests([
+        {
+          id: data.id,
+          colonyId: data.colony_id,
+          profileId: data.profile_id,
+          user: data.profile?.username ?? currentUser.username,
+          message: data.message ?? "",
+          status: mapRequestStatus(data.status),
+        },
+        ...items.filter((item) => item.id !== localRequest.id),
+      ]),
+    );
     await notifyProfile(colony.adminId, "collaboration_request", "Richiesta collaborazione", `${currentUser.username} vuole collaborare a ${colony.name}`);
     return true;
   }
@@ -1575,7 +1880,9 @@ function App() {
     const localMessage = {
       id: `local-${Date.now()}`,
       from: currentUser.username,
+      fromId: currentUser.id,
       to: recipient?.username ?? "Utente",
+      toId: recipientId,
       text: body.trim(),
       time: "adesso",
     };
@@ -1604,7 +1911,9 @@ function App() {
       {
         id: data.id,
         from: currentUser.username,
+        fromId: data.sender_id,
         to: data.recipient?.username ?? recipient?.username ?? "Utente",
+        toId: data.recipient_id,
         text: data.body,
         time: formatDate(data.created_at),
       },
@@ -1615,18 +1924,50 @@ function App() {
   async function requestFriend(profileId) {
     if (!isAuthenticated || !profileId || profileId === currentUser?.id) return false;
     const profile = profiles.find((item) => item.id === profileId);
+    const existingRequest = friendRequests.find(
+      (request) => request.profileId === profileId || request.user === profile?.username,
+    );
+    if (existingRequest) return true;
+
     const localRequest = {
       id: `local-${Date.now()}`,
+      profileId,
       user: profile?.username ?? "Utente",
       note: "Richiesta inviata",
       accepted: false,
       incoming: false,
       status: "pending",
     };
-    setFriendRequests((items) => [localRequest, ...items]);
+    let shouldInsert = true;
+    setFriendRequests((items) => {
+      const alreadyRequested = items.some(
+        (request) => request.profileId === profileId || request.user === profile?.username,
+      );
+      if (alreadyRequested) {
+        shouldInsert = false;
+        return items;
+      }
+      return dedupeFriendRequests([localRequest, ...items]);
+    });
+    if (!shouldInsert) return true;
 
     const supabase = await getSupabaseClient();
     if (!supabase || !currentUser?.id) return true;
+
+    const { data: existingRows, error: existingError } = await supabase
+      .from("friend_requests")
+      .select("id,status")
+      .or(`and(from_profile_id.eq.${currentUser.id},to_profile_id.eq.${profileId}),and(from_profile_id.eq.${profileId},to_profile_id.eq.${currentUser.id})`)
+      .limit(1);
+    if (existingError) {
+      setDataStatus(`Errore richiesta amicizia: ${existingError.message}`);
+      setFriendRequests((items) => items.filter((item) => item.id !== localRequest.id));
+      return false;
+    }
+    if (existingRows?.length) {
+      await loadSocialData();
+      return true;
+    }
 
     const { error } = await supabase.from("friend_requests").insert({
       from_profile_id: currentUser.id,
@@ -1635,6 +1976,7 @@ function App() {
     });
     if (error) {
       setDataStatus(`Errore richiesta amicizia: ${error.message}`);
+      setFriendRequests((items) => items.filter((item) => item.id !== localRequest.id));
       return false;
     }
     await loadSocialData();
@@ -1649,6 +1991,7 @@ function App() {
       body: payload.body.trim(),
       category: payload.category,
       author: currentUser.username,
+      authorId: currentUser.id,
       time: "adesso",
       posts: [],
     };
@@ -1665,7 +2008,7 @@ function App() {
         category: thread.category,
         author_id: currentUser.id,
       })
-      .select("id,title,body,category,created_at,author:profiles!forum_threads_author_id_fkey(username)")
+      .select("id,title,body,category,author_id,created_at,author:profiles!forum_threads_author_id_fkey(username)")
       .single();
 
     if (error) {
@@ -1680,6 +2023,7 @@ function App() {
         body: data.body,
         category: data.category,
         author: data.author?.username ?? currentUser.username,
+        authorId: data.author_id,
         time: formatDate(data.created_at),
         posts: [],
       },
@@ -1700,6 +2044,7 @@ function App() {
                 {
                   id: `local-${Date.now()}`,
                   author: currentUser.username,
+                  authorId: currentUser.id,
                   body: body.trim(),
                   time: "adesso",
                 },
@@ -1719,6 +2064,65 @@ function App() {
     });
     if (error) {
       setDataStatus(`Errore risposta forum: ${error.message}`);
+      return false;
+    }
+    await loadSocialData();
+    return true;
+  }
+
+  async function deleteForumThread(threadId) {
+    const thread = forumThreads.find((item) => item.id === threadId);
+    if (!thread || (!isSiteAdmin && !isOwnedByCurrentUser(thread, currentUser))) return false;
+    setForumThreads((items) => items.filter((item) => item.id !== threadId));
+
+    const supabase = await getSupabaseClient();
+    if (!supabase || String(threadId).startsWith("local-")) return true;
+
+    const { error } = await supabase.from("forum_threads").delete().eq("id", threadId);
+    if (error) {
+      setDataStatus(`Errore cancellazione thread: ${error.message}`);
+      await loadSocialData();
+      return false;
+    }
+    return true;
+  }
+
+  async function deleteForumPost(threadId, postId) {
+    const thread = forumThreads.find((item) => item.id === threadId);
+    const post = thread?.posts?.find((item) => item.id === postId);
+    if (!post || (!isSiteAdmin && !isOwnedByCurrentUser(post, currentUser))) return false;
+    setForumThreads((items) =>
+      items.map((item) =>
+        item.id === threadId
+          ? { ...item, posts: (item.posts ?? []).filter((reply) => reply.id !== postId) }
+          : item,
+      ),
+    );
+
+    const supabase = await getSupabaseClient();
+    if (!supabase || String(postId).startsWith("local-")) return true;
+
+    const { error } = await supabase.from("forum_posts").delete().eq("id", postId);
+    if (error) {
+      setDataStatus(`Errore cancellazione risposta: ${error.message}`);
+      await loadSocialData();
+      return false;
+    }
+    return true;
+  }
+
+  async function deletePrivateMessage(messageId) {
+    const message = privateMessages.find((item) => item.id === messageId);
+    if (!message || (!isSiteAdmin && !isOwnedByCurrentUser(message, currentUser))) return false;
+    setPrivateMessages((items) => items.filter((item) => item.id !== messageId));
+
+    const supabase = await getSupabaseClient();
+    if (!supabase || String(messageId).startsWith("local-")) return true;
+
+    const { error } = await supabase.from("messages").delete().eq("id", messageId);
+    if (error) {
+      setDataStatus(`Errore cancellazione messaggio: ${error.message}`);
+      await loadSocialData();
       return false;
     }
     return true;
@@ -1931,6 +2335,7 @@ function App() {
           }}
           onApproveParticipation={approveParticipation}
           onRejectParticipation={rejectParticipation}
+          onMarkAllNotificationsRead={markAllNotificationsRead}
           onLogout={signOut}
         />
         {activeSection === "Mappa" && (
@@ -2042,6 +2447,23 @@ function App() {
             }}
           />
         )}
+        {activeSection === "Preferiti" && isAuthenticated && (
+          <FavoritesSection
+            favoriteColonies={favoriteColonies}
+            favoriteCats={favoriteCats}
+            onOpenColony={(id) => {
+              setSelectedId(id);
+              setActiveSection("Colonie");
+            }}
+            onToggleFavorite={toggleFavorite}
+          />
+        )}
+        {activeSection === "Preferiti" && !isAuthenticated && (
+          <AuthRequiredPanel title="Preferiti" onRequireAuth={() => {
+            setAuthMode("login");
+            setRegisterOpen(true);
+          }} />
+        )}
         {activeSection === "Messaggi" && isAuthenticated && (
           <MessagesSection
             profiles={profiles}
@@ -2134,7 +2556,6 @@ function Sidebar({ activeSection, onSectionChange, counts }) {
         <HeartHandshake size={24} />
         <h3>Il tuo impegno fa la differenza</h3>
         <p>Grazie a tutti i volontari della community.</p>
-        <button>Scopri di più</button>
       </div>
       <button className="help-link">
         <CircleHelp size={16} />
@@ -2160,10 +2581,25 @@ function Topbar({
   onOpenColony,
   onApproveParticipation,
   onRejectParticipation,
+  onMarkAllNotificationsRead,
   onLogout,
 }) {
   const unreadCount = notifications.filter((item) => !item.read).length;
   const notificationCount = unreadCount + pendingCollaborationRequests.length;
+  const notificationRef = useRef(null);
+
+  useEffect(() => {
+    if (!isNotificationsOpen) return;
+
+    const closeOnOutsideClick = (event) => {
+      if (!notificationRef.current?.contains(event.target)) {
+        setNotificationsOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    return () => document.removeEventListener("mousedown", closeOnOutsideClick);
+  }, [isNotificationsOpen, setNotificationsOpen]);
 
   return (
     <header className="topbar">
@@ -2178,7 +2614,7 @@ function Topbar({
       </label>
       <div className="account">
         {isAuthenticated && (
-          <div className="notification-wrap">
+          <div className="notification-wrap" ref={notificationRef}>
             <button
               className="icon-btn alert"
               aria-label="Notifiche"
@@ -2189,7 +2625,12 @@ function Topbar({
             </button>
             {isNotificationsOpen && (
               <div className="notification-popover">
-                <h2>Notifiche</h2>
+                <div className="notification-popover-head">
+                  <h2>Notifiche</h2>
+                  {unreadCount > 0 && (
+                    <button onClick={onMarkAllNotificationsRead}>Segna tutte come lette</button>
+                  )}
+                </div>
                 {pendingCollaborationRequests.map((request) => {
                   const colony = colonies.find((item) => item.id === request.colonyId);
                   return (
@@ -3970,6 +4411,48 @@ function ReportsSection({ colonies, reports, canEdit, selected, defaultColonyId,
         ))}
       </div>
       <small className="section-note">Colonie monitorate: {colonies.length}</small>
+    </section>
+  );
+}
+
+function FavoritesSection({ favoriteColonies, favoriteCats, onOpenColony, onToggleFavorite }) {
+  return (
+    <section className="page-section">
+      <PageHeader title="Preferiti" />
+      <div className="community-grid">
+        <section className="table-panel">
+          <h2>Colonie preferite</h2>
+          {favoriteColonies.map((colony) => (
+            <article className="request-row" key={colony.id}>
+              <div>
+                <strong>{colony.name}</strong>
+                <p>{colony.zone}</p>
+                <small>{colony.status}</small>
+              </div>
+              <div className="row-actions">
+                <button onClick={() => onOpenColony(colony.id)}>Apri</button>
+                <button onClick={() => onToggleFavorite("colony", colony.id)}>Rimuovi</button>
+              </div>
+            </article>
+          ))}
+          {!favoriteColonies.length && <p className="empty-copy padded">Nessuna colonia preferita.</p>}
+        </section>
+        <section className="table-panel">
+          <h2>Gatti preferiti</h2>
+          {favoriteCats.map((cat) => (
+            <article className="request-row favorite-cat-row" key={cat.id}>
+              <PhotoImage photo={cat.photo} alt={cat.name} />
+              <div>
+                <strong>{cat.name}</strong>
+                <p>{cat.notes || cat.status || "Scheda gatto"}</p>
+                <small>{cat.sex || "Sesso da verificare"}</small>
+              </div>
+              <button onClick={() => onToggleFavorite("cat", cat.id)}>Rimuovi</button>
+            </article>
+          ))}
+          {!favoriteCats.length && <p className="empty-copy padded">Nessun gatto preferito.</p>}
+        </section>
+      </div>
     </section>
   );
 }

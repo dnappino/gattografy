@@ -355,9 +355,32 @@ kbd {
   box-shadow: var(--shadow);
 }
 
+.notification-popover-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
 .notification-popover h2 {
   margin: 0 0 10px;
   font-size: 1rem;
+}
+
+.notification-popover-head h2 {
+  margin: 0;
+}
+
+.notification-popover-head button {
+  min-height: 30px;
+  padding: 0 9px;
+  border-radius: 7px;
+  background: var(--surface-soft);
+  color: var(--green);
+  font-size: 0.78rem;
+  font-weight: 800;
+  white-space: nowrap;
 }
 
 .notification-popover article {
@@ -399,6 +422,17 @@ kbd {
 .notification-action button.ghost {
   background: var(--coral-soft);
   color: var(--coral);
+}
+
+.favorite-cat-row {
+  grid-template-columns: 54px minmax(0, 1fr) auto;
+}
+
+.favorite-cat-row img {
+  width: 54px;
+  height: 54px;
+  border-radius: 8px;
+  object-fit: cover;
 }
 
 .content-grid {
