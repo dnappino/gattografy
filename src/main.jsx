@@ -675,8 +675,24 @@ function App() {
       }
 
       const mapped = data.map(mapDbColony);
-      setColonies(mapped);
-      setSelectedId(mapped[0].id);
+
+      // Compute cat counts for home/summary without loading all cat details.
+      const { data: catRows, error: catCountError } = await supabase
+        .from("cats")
+        .select("id,colony_id");
+      if (catCountError) throw catCountError;
+      const counts = (catRows ?? []).reduce((acc, row) => {
+        acc[row.colony_id] = (acc[row.colony_id] ?? 0) + 1;
+        return acc;
+      }, {});
+
+      const withCounts = mapped.map((colony) => ({
+        ...colony,
+        cats: counts[colony.id] ?? colony.cats ?? 0,
+      }));
+
+      setColonies(withCounts);
+      setSelectedId(withCounts[0].id);
       setDataStatus("");
 
       const { data: reportRows } = await supabase
@@ -684,7 +700,7 @@ function App() {
         .select("id,colony_id,type,status,title,description,created_at,author:profiles!reports_created_by_fkey(username)")
         .order("created_at", { ascending: false })
         .limit(40);
-      setReports(mapDbReports(reportRows ?? [], mapped));
+       setReports(mapDbReports(reportRows ?? [], withCounts));
     } catch (error) {
       setDataStatus(`Errore lettura Supabase: ${error.message}`);
     } finally {
@@ -2922,19 +2938,29 @@ function MapSection({
   onReportTarget,
   onOpenReports,
 }) {
-  const visibleColonies = mapBounds
-    ? colonies.filter((colony) => hasValidCoordinates(colony) && mapBounds.contains([Number(colony.lat), Number(colony.lng)]))
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [kittensOnly, setKittensOnly] = useState(false);
+
+  const coloniesForMap = kittensOnly
+    ? colonies.filter((colony) => Number(colony.kittens || 0) > 0)
     : colonies;
+  const visibleColonies = mapBounds
+    ? coloniesForMap.filter((colony) => hasValidCoordinates(colony) && mapBounds.contains([Number(colony.lat), Number(colony.lng)]))
+    : coloniesForMap;
 
   return (
     <div className="content-grid">
       <section className="map-column" aria-label="Mappa delle colonie">
         <MapCanvas
-          colonies={colonies}
+          colonies={coloniesForMap}
           selectedId={selectedId}
           onSelect={onSelect}
           onOpenColony={onOpenColony}
           onBoundsChange={onBoundsChange}
+          filtersOpen={filtersOpen}
+          onToggleFilters={() => setFiltersOpen((value) => !value)}
+          kittensOnly={kittensOnly}
+          onToggleKittensOnly={() => setKittensOnly((value) => !value)}
         />
         <OpenReportsFeed reports={reports} />
         <ColonyList
@@ -2987,7 +3013,17 @@ function MapSection({
   );
 }
 
-function MapCanvas({ colonies, selectedId, onSelect, onOpenColony, onBoundsChange }) {
+function MapCanvas({
+  colonies,
+  selectedId,
+  onSelect,
+  onOpenColony,
+  onBoundsChange,
+  filtersOpen,
+  onToggleFilters,
+  kittensOnly,
+  onToggleKittensOnly,
+}) {
   const validColonies = colonies.filter(hasValidCoordinates);
   const selected = validColonies.find((colony) => colony.id === selectedId) ?? validColonies[0];
   if (!selected) {
@@ -3001,10 +3037,19 @@ function MapCanvas({ colonies, selectedId, onSelect, onOpenColony, onBoundsChang
 
   return (
     <div className="map-canvas">
-      <button className="filter-button">
+      <button type="button" className="filter-button" onClick={onToggleFilters} aria-expanded={filtersOpen}>
         <Settings size={17} />
         Filtri
       </button>
+      {filtersOpen && (
+        <div className="map-filters" role="dialog" aria-label="Filtri mappa">
+          <label className="inline-check">
+            <input type="checkbox" checked={kittensOnly} onChange={onToggleKittensOnly} />
+            Con cuccioli
+          </label>
+          <button type="button" className="ghost" onClick={onToggleFilters}>Chiudi</button>
+        </div>
+      )}
       <MapContainer
         center={[Number(selected.lat), Number(selected.lng)]}
         zoom={15}
@@ -4613,6 +4658,7 @@ function CatsSection({ colonies, catsByColony, canEdit, canEditColonyId, onSaveC
     (catsByColony[colony.id] ?? []).map((cat, index) => ({
       ...cat,
       id: cat.id ?? `${colony.id}-${cat.name}-${index}`,
+      colonyId: cat.colonyId ?? colony.id,
       colony: colony.name,
       zone: colony.zone,
       lastSeen: index === 0 ? "oggi" : "questa settimana",

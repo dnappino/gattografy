@@ -1195,6 +1195,25 @@ kbd {
   font-size: 0.9rem;
 }
 
+.map-filters {
+  position: absolute;
+  z-index: 510;
+  right: 16px;
+  top: 62px;
+  display: grid;
+  gap: 10px;
+  min-width: 180px;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: #fff;
+  box-shadow: var(--small-shadow);
+}
+
+.map-filters .ghost {
+  justify-self: end;
+}
+
 .real-map {
   width: 100%;
   min-height: 410px;
