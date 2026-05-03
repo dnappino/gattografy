@@ -17,6 +17,12 @@ npm install
 npm run dev
 ```
 
+Web app mobile dedicata:
+
+```bash
+npm run dev:mobile
+```
+
 ## Build
 
 ```bash
@@ -34,6 +40,8 @@ Netlify non va usato come target principale perche' puo' sospendere il sito quan
 ```bash
 npm run build:github
 ```
+
+`build:github` ora compila sia app desktop sia app mobile e pubblica la mobile in `dist/mobile`.
 
 La build va pubblicata sul branch `gh-pages` del repository `dnappino/gattografy`.
 

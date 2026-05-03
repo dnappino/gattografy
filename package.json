@@ -5,8 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
+    "dev:mobile": "vite --config mobile/vite.config.mjs",
     "build": "vite build",
-    "build:github": "vite build --base=/gattografy/",
+    "build:mobile": "vite build --config mobile/vite.config.mjs",
+    "build:github": "node scripts/build-github.mjs",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {

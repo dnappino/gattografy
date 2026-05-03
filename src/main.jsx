@@ -541,6 +541,15 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (!import.meta.env.PROD || typeof window === "undefined") return;
+    const isMobile = window.matchMedia("(max-width: 820px)").matches;
+    const inMobileApp = window.location.pathname.includes("/mobile/");
+    if (!isMobile || inMobileApp) return;
+    const target = `${import.meta.env.BASE_URL}mobile/`;
+    window.location.replace(target);
+  }, []);
+
+  useEffect(() => {
     let unsubscribe = null;
 
     async function loadSession() {
