@@ -192,7 +192,7 @@ const navItems = [
 ];
 
 const utilityItems = [
-  ["I miei preferiti", Star],
+  ["I miei preferiti", Star, "Preferiti"],
   ["Le mie attività", Clock3],
   ["Documenti e guide", Layers],
   ["Statistiche", Home],
@@ -1263,6 +1263,10 @@ function App() {
       return false;
     }
 
+    const sterilizedMales = Number(patch.sterilizedMales) || 0;
+    const unsterilizedMales = Number(patch.unsterilizedMales) || 0;
+    const sterilizedFemales = Number(patch.sterilizedFemales) || 0;
+    const unsterilizedFemales = Number(patch.unsterilizedFemales) || 0;
     const cleaned = {
       ...patch,
       name: patch.name?.trim(),
@@ -1271,14 +1275,14 @@ function App() {
       status: patch.status?.trim() || "Attiva",
       lat: Number(patch.lat),
       lng: Number(patch.lng),
-      totalMales: Number(patch.totalMales) || 0,
-      sterilizedMales: Number(patch.sterilizedMales) || 0,
-      unsterilizedMales: Number(patch.unsterilizedMales) || 0,
-      totalFemales: Number(patch.totalFemales) || 0,
-      sterilizedFemales: Number(patch.sterilizedFemales) || 0,
-      unsterilizedFemales: Number(patch.unsterilizedFemales) || 0,
-      totalSterilized: Number(patch.totalSterilized) || 0,
-      totalUnsterilized: Number(patch.totalUnsterilized) || 0,
+      totalMales: sterilizedMales + unsterilizedMales,
+      sterilizedMales,
+      unsterilizedMales,
+      totalFemales: sterilizedFemales + unsterilizedFemales,
+      sterilizedFemales,
+      unsterilizedFemales,
+      totalSterilized: sterilizedMales + sterilizedFemales,
+      totalUnsterilized: unsterilizedMales + unsterilizedFemales,
     };
 
     if (!cleaned.name || !cleaned.address || !cleaned.city || Number.isNaN(cleaned.lat) || Number.isNaN(cleaned.lng)) {
@@ -2185,7 +2189,6 @@ function App() {
       colony_id: targetColony.id,
       name: cleaned.name,
       sex: cleaned.sex || null,
-      status: cleaned.status || null,
       notes: cleaned.notes || null,
       sterilized: cleaned.sterilized === "" ? null : cleaned.sterilized,
       sterilization_date: cleaned.sterilizationDate || null,
@@ -2259,7 +2262,6 @@ function App() {
           colonyId: targetColonyId,
           name: patch.name?.trim() || "Nuovo gatto",
           sex: patch.sex || "",
-          status: patch.status || "Da verificare",
           notes: patch.notes || "",
           photo: patch.photoPreview || catPlaceholder,
         },
@@ -2583,8 +2585,13 @@ function Sidebar({ activeSection, onSectionChange, counts }) {
         ))}
       </nav>
       <nav className="nav-group utilities" aria-label="Strumenti">
-        {utilityItems.map(([label, Icon]) => (
-          <button className="nav-item" key={label}>
+        {utilityItems.map(([label, Icon, targetSection]) => (
+          <button
+            className={targetSection === activeSection ? "nav-item active" : "nav-item"}
+            key={label}
+            onClick={() => targetSection && onSectionChange(targetSection)}
+            disabled={!targetSection}
+          >
             <Icon size={18} />
             <span>{label}</span>
           </button>
@@ -3271,14 +3278,10 @@ function ColonyEditPanel({ selected, onUpdateColony }) {
           <input value={draft.volunteerCallHours} onChange={updateField("volunteerCallHours")} />
         </label>
         {[
-          ["Maschi", "totalMales"],
           ["Maschi sterilizzati", "sterilizedMales"],
           ["Maschi non sterilizzati", "unsterilizedMales"],
-          ["Femmine", "totalFemales"],
           ["Femmine sterilizzate", "sterilizedFemales"],
           ["Femmine non sterilizzate", "unsterilizedFemales"],
-          ["Totale sterilizzati", "totalSterilized"],
-          ["Totale non sterilizzati", "totalUnsterilized"],
         ].map(([label, field]) => (
           <label key={field}>
             {label}
@@ -3459,10 +3462,6 @@ function CatEditPanel({ cat, onSaveCat }) {
           </select>
         </label>
         <label>
-          Stato
-          <input value={draft.status} onChange={updateField("status")} />
-        </label>
-        <label>
           Data sterilizzazione
           <input type="date" value={draft.sterilizationDate} onChange={updateField("sterilizationDate")} />
         </label>
@@ -3509,7 +3508,6 @@ function makeCatDraft(cat) {
   return {
     name: cat.name ?? "",
     sex: cat.sex ?? "",
-    status: cat.status ?? "",
     notes: cat.notes ?? "",
     sterilized: cat.sterilized ?? "",
     sterilizationDate: cat.sterilizationDate ?? "",
@@ -4217,7 +4215,7 @@ function ColonyFullPanel({
                     <PhotoImage photo={cat.photo} alt={cat.name} />
                     <strong>{cat.name}</strong>
                     <span>{cat.sex}</span>
-                    <small>{cat.notes || cat.status}</small>
+                    <small>{cat.notes || "Scheda gatto"}</small>
                     <ShieldCheck size={18} />
                   </article>
                 ))}
@@ -4321,7 +4319,6 @@ function CatCreatePanel({ colonies, onCreateCat, onDone, defaultColonyId }) {
     colonyId: defaultColonyId ?? colonies[0]?.id ?? "",
     name: "",
     sex: "",
-    status: "Da verificare",
     notes: "",
     sterilized: "",
     sterilizationDate: "",
@@ -4395,10 +4392,6 @@ function CatCreatePanel({ colonies, onCreateCat, onDone, defaultColonyId }) {
           </select>
         </label>
         <label>
-          Stato
-          <input value={draft.status} onChange={updateField("status")} />
-        </label>
-        <label>
           Data sterilizzazione
           <input type="date" value={draft.sterilizationDate} onChange={updateField("sterilizationDate")} />
         </label>
@@ -4455,7 +4448,7 @@ function CatsSection({ colonies, catsByColony, canEdit, onSaveCat, onCreateCat, 
             <PhotoImage photo={cat.photo} alt={cat.name} />
             <div>
               <strong>{cat.name}</strong>
-              <span>{cat.sex || "Sesso da verificare"} · {cat.notes || cat.status || "Scheda aperta"}</span>
+              <span>{cat.sex || "Sesso da verificare"} · {cat.notes || "Scheda aperta"}</span>
               <small>{cat.colony}</small>
               <em>Ultimo avvistamento: {cat.lastSeen}</em>
             </div>
@@ -4603,7 +4596,7 @@ function FavoritesSection({ favoriteColonies, favoriteCats, onOpenColony, onTogg
               <PhotoImage photo={cat.photo} alt={cat.name} />
               <div>
                 <strong>{cat.name}</strong>
-                <p>{cat.notes || cat.status || "Scheda gatto"}</p>
+                <p>{cat.notes || "Scheda gatto"}</p>
                 <small>{cat.sex || "Sesso da verificare"}</small>
               </div>
               <button onClick={() => onToggleFavorite("cat", cat.id)}>Rimuovi</button>
