@@ -2293,6 +2293,67 @@ function App() {
     return true;
   }
 
+  function canEditColonyId(targetColonyId) {
+    const targetColony = colonies.find((item) => item.id === targetColonyId);
+    if (!targetColony) return false;
+    return (
+      isAuthenticated &&
+      (isSiteAdmin ||
+        targetColony.adminId === currentUser?.id ||
+        targetColony.createdBy === currentUser?.id ||
+        targetColony.admin === currentUser?.username ||
+        targetColony.collaborators?.includes(currentUser?.username))
+    );
+  }
+
+  async function deleteCat(catId, colonyId) {
+    const targetColonyId = colonyId || selected.id;
+    if (!canEditColonyId(targetColonyId)) {
+      setAuthMode("login");
+      setRegisterOpen(true);
+      return false;
+    }
+
+    const previousCats = catsByColony[targetColonyId] ?? [];
+    const removedCat = previousCats.find((item) => item.id === catId);
+
+    setCatsByColony((items) => ({
+      ...items,
+      [targetColonyId]: (items[targetColonyId] ?? []).filter((item) => item.id !== catId),
+    }));
+    setColonies((items) =>
+      items.map((item) =>
+        item.id === targetColonyId ? { ...item, cats: Math.max(0, (item.cats ?? 0) - 1), updated: "adesso" } : item,
+      ),
+    );
+
+    const supabase = await getSupabaseClient();
+    if (!supabase) return true;
+
+    if (String(catId).startsWith("local-")) return true;
+
+    const { error } = await supabase.from("cats").delete().eq("id", catId);
+    if (error) {
+      setDataStatus(`Errore cancellazione gatto: ${error.message}`);
+      // rollback
+      setCatsByColony((items) => ({
+        ...items,
+        [targetColonyId]: previousCats,
+      }));
+      setColonies((items) =>
+        items.map((item) =>
+          item.id === targetColonyId ? { ...item, cats: (item.cats ?? 0) + 1 } : item,
+        ),
+      );
+      return false;
+    }
+
+    if (removedCat) {
+      await trackChange(targetColonyId, "cat", String(catId), "delete", `Gatto ${removedCat.name ?? "Senza nome"} eliminato da ${currentUser?.username ?? "utente"}`);
+    }
+    return true;
+  }
+
   async function createCatForColony(targetColonyId, patch) {
     const tempId = `local-${Date.now()}`;
     const targetColony = colonies.find((item) => item.id === targetColonyId);
@@ -2495,8 +2556,10 @@ function App() {
             colonies={colonies}
             catsByColony={catsByColony}
             canEdit={canEditSelected}
+            canEditColonyId={canEditColonyId}
             onSaveCat={saveCat}
             onCreateCat={createCatForColony}
+            onDeleteCat={deleteCat}
             defaultColonyId={defaultColonyId}
             favoriteCatIds={favoriteCatIds}
             onToggleFavorite={toggleFavorite}
@@ -3512,7 +3575,7 @@ function HelpFeed({ reports = [], selected, canEdit, onCreateHelpRequest }) {
   );
 }
 
-function CatEditPanel({ cat, onSaveCat }) {
+function CatEditPanel({ cat, onSaveCat, onDeleteCat, canDelete }) {
   const [draft, setDraft] = useState(() => makeCatDraft(cat));
   const [status, setStatus] = useState("");
 
@@ -3552,6 +3615,22 @@ function CatEditPanel({ cat, onSaveCat }) {
     <form className="edit-panel" onSubmit={submit}>
       <div className="section-title compact">
         <h2>Modifica gatto</h2>
+        {canDelete && (
+          <button
+            type="button"
+            className="danger-button"
+            onClick={() => {
+              if (!onDeleteCat) return;
+              const ok = window.confirm(`Eliminare definitivamente il gatto "${cat.name || "Senza nome"}"?`);
+              if (!ok) return;
+              onDeleteCat(cat.id, cat.colonyId);
+            }}
+            title="Elimina gatto"
+          >
+            <Trash2 size={16} />
+            Elimina
+          </button>
+        )}
       </div>
       <div className="edit-grid">
         <label className="photo-field">
@@ -4529,7 +4608,7 @@ function CatCreatePanel({ colonies, onCreateCat, onDone, defaultColonyId }) {
   );
 }
 
-function CatsSection({ colonies, catsByColony, canEdit, onSaveCat, onCreateCat, defaultColonyId, favoriteCatIds, onToggleFavorite, onReportTarget, onCreateHelpRequest, openCreateToken = 0 }) {
+function CatsSection({ colonies, catsByColony, canEdit, canEditColonyId, onSaveCat, onCreateCat, onDeleteCat, defaultColonyId, favoriteCatIds, onToggleFavorite, onReportTarget, onCreateHelpRequest, openCreateToken = 0 }) {
   const registryCats = colonies.flatMap((colony) =>
     (catsByColony[colony.id] ?? []).map((cat, index) => ({
       ...cat,
@@ -4604,7 +4683,23 @@ function CatsSection({ colonies, catsByColony, canEdit, onSaveCat, onCreateCat, 
               Segnala
             </button>
             <button onClick={() => setSightingCat(cat)}>Avvistamento</button>
-            {canEdit && <button onClick={() => setEditingCat(cat)}>Modifica</button>}
+            {(canEditColonyId?.(cat.colonyId) ?? canEdit) && (
+              <button onClick={() => setEditingCat(cat)}>Modifica</button>
+            )}
+            {(canEditColonyId?.(cat.colonyId) ?? false) && onDeleteCat && (
+              <button
+                className="danger-button"
+                onClick={() => {
+                  const ok = window.confirm(`Eliminare definitivamente il gatto \"${cat.name || "Senza nome"}\"?`);
+                  if (!ok) return;
+                  onDeleteCat(cat.id, cat.colonyId);
+                }}
+                title="Elimina gatto"
+              >
+                <Trash2 size={16} />
+                Elimina
+              </button>
+            )}
           </article>
         ))}
       </div>
@@ -4625,7 +4720,14 @@ function CatsSection({ colonies, catsByColony, canEdit, onSaveCat, onCreateCat, 
           <button className="primary">Salva avvistamento</button>
         </form>
       )}
-      {canEdit && editingCat && <CatEditPanel cat={editingCat} onSaveCat={onSaveCat} />}
+      {editingCat && (
+        <CatEditPanel
+          cat={editingCat}
+          onSaveCat={onSaveCat}
+          onDeleteCat={onDeleteCat}
+          canDelete={Boolean(canEditColonyId?.(editingCat.colonyId) ?? canEdit)}
+        />
+      )}
       {!registryCats.length && <p className="empty-copy">Nessun gatto censito nel database.</p>}
     </section>
   );
