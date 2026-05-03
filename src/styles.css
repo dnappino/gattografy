@@ -2491,6 +2491,11 @@ select {
   top: 16px;
 }
 
+.mobile-screen {
+  display: grid;
+  gap: 10px;
+}
+
 .phone-top {
   display: flex;
   align-items: center;
@@ -2533,32 +2538,18 @@ select {
   overflow: hidden;
 }
 
-.phone-map button {
-  position: absolute;
-  left: 48%;
-  top: 45%;
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  border: 3px solid #fff;
-  border-radius: 50%;
-  background: var(--coral);
-  color: #fff;
+.phone-map.live-map {
+  background: #eaf3ef;
+  padding: 0;
 }
 
-.phone-map .pin-two {
-  left: 70%;
-  top: 28%;
-  background: var(--green);
-  font-weight: 800;
+.mobile-real-map {
+  min-height: 172px;
+  border-radius: 18px;
 }
 
-.phone-map .pin-three {
-  left: 25%;
-  top: 62%;
-  background: var(--blue);
-  font-weight: 800;
+.mobile-real-map .leaflet-control-container {
+  display: none;
 }
 
 .phone-card {
@@ -2643,10 +2634,6 @@ select {
 }
 
 .phone-actions button:nth-child(3) {
-  background: var(--amber);
-}
-
-.phone-actions button:nth-child(4) {
   background: var(--coral);
 }
 
@@ -2678,6 +2665,10 @@ select {
 
 .compact-sighting-form {
   margin-top: 14px;
+}
+
+.cat-create-mobile-first .photo-field-priority {
+  order: -1;
 }
 
 @media (max-width: 1500px) {
@@ -2772,6 +2763,15 @@ select {
     height: 172px;
   }
 
+  .app-shell.mobile-home-active .phone-map.live-map .map-canvas,
+  .app-shell.mobile-home-active .phone-map.live-map .real-map {
+    min-height: 172px;
+    height: 172px;
+    border: 0;
+    border-radius: 18px;
+    box-shadow: none;
+  }
+
   .app-shell.mobile-home-active .phone-card {
     border-radius: 16px;
   }
@@ -2854,6 +2854,15 @@ select {
   .media-strip img:first-child {
     height: 104px;
     grid-row: auto;
+  }
+
+  .cat-create-mobile-first .photo-field-priority {
+    grid-column: 1 / -1;
+  }
+
+  .colony-create-mobile-first .photo-field {
+    grid-column: 1 / -1;
+    order: -1;
   }
 
   .register-modal {

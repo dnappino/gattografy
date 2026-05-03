@@ -464,6 +464,7 @@ function App() {
   const [mapBounds, setMapBounds] = useState(null);
   const [userPosition, setUserPosition] = useState(null);
   const [isMobileViewport, setMobileViewport] = useState(false);
+  const [quickAction, setQuickAction] = useState({ type: "", key: 0, preset: "" });
   const selected = useMemo(
     () => colonies.find((colony) => colony.id === selectedId) ?? colonies[0],
     [colonies, selectedId],
@@ -2458,6 +2459,7 @@ function App() {
             onReportTarget={setModerationTarget}
             onDeleteColony={deleteColony}
             isSiteAdmin={isSiteAdmin}
+            openCreateToken={quickAction.type === "colony" ? quickAction.key : 0}
           />
         )}
         {activeSection === "Gatti" && (
@@ -2472,6 +2474,7 @@ function App() {
             onToggleFavorite={toggleFavorite}
             onReportTarget={setModerationTarget}
             onCreateHelpRequest={createHelpRequest}
+            openCreateToken={quickAction.type === "cat" ? quickAction.key : 0}
           />
         )}
         {activeSection === "Segnalazioni" && (
@@ -2487,6 +2490,8 @@ function App() {
               setAuthMode("login");
               setRegisterOpen(true);
             }}
+            openCreateToken={quickAction.type === "report" ? quickAction.key : 0}
+            presetType={quickAction.type === "report" ? quickAction.preset : ""}
           />
         )}
         {activeSection === "Preferiti" && isAuthenticated && (
@@ -2550,18 +2555,39 @@ function App() {
           }} />
         )}
       </section>
-      <MobilePreview
-        selected={selected}
-        onAddCat={addCat}
-        onReportKitten={reportKitten}
-        isAuthenticated={isAuthenticated}
-        onOpenColonies={() => setActiveSection("Colonie")}
-        onOpenReports={() => setActiveSection("Segnalazioni")}
-        onRequireAuth={() => {
-          setAuthMode("login");
-          setRegisterOpen(true);
-        }}
-      />
+      {useMobileHome && (
+        <MobileHomeScreen
+          colonies={filteredColonies}
+          selected={selected}
+          selectedId={selectedId}
+          onSelectColony={setSelectedId}
+          onOpenColony={(id) => {
+            setSelectedId(id);
+            setActiveSection("Colonie");
+          }}
+          onOpenCreateColony={() => {
+            setQuickAction({ type: "colony", key: Date.now(), preset: "" });
+            setActiveSection("Colonie");
+          }}
+          onOpenCreateCat={() => {
+            setQuickAction({ type: "cat", key: Date.now(), preset: "" });
+            setActiveSection("Gatti");
+          }}
+          onOpenBirthReport={() => {
+            setQuickAction({ type: "report", key: Date.now(), preset: "birth" });
+            setActiveSection("Segnalazioni");
+          }}
+          onOpenRescueReport={() => {
+            setQuickAction({ type: "report", key: Date.now(), preset: "rescue" });
+            setActiveSection("Segnalazioni");
+          }}
+          isAuthenticated={isAuthenticated}
+          onRequireAuth={() => {
+            setAuthMode("login");
+            setRegisterOpen(true);
+          }}
+        />
+      )}
       {isRegisterOpen && (
         <RegisterModal
           authMode={authMode}
@@ -3260,8 +3286,8 @@ function ColonyEditPanel({ selected, onUpdateColony }) {
       <div className="section-title compact">
         <h2>Modifica colonia</h2>
       </div>
-      <div className="edit-grid">
-        <label className="photo-field">
+      <div className="edit-grid cat-create-mobile-first">
+        <label className="photo-field photo-field-priority">
           Foto colonia
           <PhotoImage photo={draft.photoPreview || draft.photoUrl || colonyPlaceholder} alt="Foto colonia" />
           <input type="file" accept="image/*" onChange={updatePhoto} />
@@ -3842,6 +3868,7 @@ function ColoniesSection({
   onReportTarget,
   onDeleteColony,
   isSiteAdmin,
+  openCreateToken = 0,
 }) {
   const [isCreating, setCreating] = useState(false);
   const [newColony, setNewColony] = useState({
@@ -3870,6 +3897,10 @@ function ColoniesSection({
     const value = field === "aslDeclared" ? event.target.checked : event.target.value;
     setNewColony((current) => ({ ...current, [field]: value }));
   };
+  useEffect(() => {
+    if (!openCreateToken || !isAuthenticated) return;
+    setCreating(true);
+  }, [openCreateToken, isAuthenticated]);
   const updateNewPhoto = (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -3955,7 +3986,7 @@ function ColoniesSection({
         </div>
       )}
       {isCreating && (
-        <form className="create-panel" onSubmit={submitColony}>
+        <form className="create-panel colony-create-mobile-first" onSubmit={submitColony}>
           <label className="photo-field">
             Foto colonia
             <PhotoImage photo={newColony.photoPreview || colonyPlaceholder} alt="Foto colonia" />
@@ -4463,7 +4494,7 @@ function CatCreatePanel({ colonies, onCreateCat, onDone, defaultColonyId }) {
   );
 }
 
-function CatsSection({ colonies, catsByColony, canEdit, onSaveCat, onCreateCat, defaultColonyId, favoriteCatIds, onToggleFavorite, onReportTarget, onCreateHelpRequest }) {
+function CatsSection({ colonies, catsByColony, canEdit, onSaveCat, onCreateCat, defaultColonyId, favoriteCatIds, onToggleFavorite, onReportTarget, onCreateHelpRequest, openCreateToken = 0 }) {
   const registryCats = colonies.flatMap((colony) =>
     (catsByColony[colony.id] ?? []).map((cat, index) => ({
       ...cat,
@@ -4477,6 +4508,10 @@ function CatsSection({ colonies, catsByColony, canEdit, onSaveCat, onCreateCat, 
   const [isCreating, setCreating] = useState(false);
   const [sightingCat, setSightingCat] = useState(null);
   const [sightingDraft, setSightingDraft] = useState("");
+  useEffect(() => {
+    if (!openCreateToken) return;
+    setCreating(true);
+  }, [openCreateToken]);
 
   async function submitCatSighting(event) {
     event.preventDefault();
@@ -4561,7 +4596,7 @@ function CatsSection({ colonies, catsByColony, canEdit, onSaveCat, onCreateCat, 
   );
 }
 
-function ReportsSection({ colonies, reports, canEdit, selected, defaultColonyId, onCreateHelpRequest, isAuthenticated, onRequireAuth }) {
+function ReportsSection({ colonies, reports, canEdit, selected, defaultColonyId, onCreateHelpRequest, isAuthenticated, onRequireAuth, openCreateToken = 0, presetType = "" }) {
   const columns = [
     ["open", "Aperta"],
     ["checking", "Da verificare"],
@@ -4577,6 +4612,15 @@ function ReportsSection({ colonies, reports, canEdit, selected, defaultColonyId,
   useEffect(() => {
     setDraft((current) => ({ ...current, colonyId: defaultColonyId ?? selected.id }));
   }, [defaultColonyId, selected.id]);
+  useEffect(() => {
+    if (!openCreateToken) return;
+    setCreating(true);
+    setDraft((current) => ({
+      ...current,
+      colonyId: defaultColonyId ?? selected.id,
+      type: presetType || current.type || "sighting",
+    }));
+  }, [openCreateToken, presetType, defaultColonyId, selected.id]);
 
   const updateField = (field) => (event) =>
     setDraft((current) => ({ ...current, [field]: event.target.value }));
@@ -5319,7 +5363,31 @@ function RegisterModal({
   );
 }
 
-function MobilePreview({ selected, onAddCat, onReportKitten, isAuthenticated, onOpenColonies, onOpenReports, onRequireAuth }) {
+function MobileHomeScreen({
+  colonies,
+  selected,
+  selectedId,
+  onSelectColony,
+  onOpenColony,
+  onOpenCreateColony,
+  onOpenCreateCat,
+  onOpenBirthReport,
+  onOpenRescueReport,
+  isAuthenticated,
+  onRequireAuth,
+}) {
+  const validColonies = colonies.filter(hasValidCoordinates);
+  const selectedColony = validColonies.find((item) => item.id === selectedId) ?? validColonies[0] ?? selected;
+  const activeColony = selectedColony ?? {
+    id: "",
+    name: "Nessuna colonia",
+    zone: "Posizione non disponibile",
+    aslDeclared: false,
+    cats: 0,
+    kittens: 0,
+    photos: [colonyPlaceholder],
+  };
+
   const runProtected = (action) => {
     if (!isAuthenticated) {
       onRequireAuth();
@@ -5329,47 +5397,68 @@ function MobilePreview({ selected, onAddCat, onReportKitten, isAuthenticated, on
   };
 
   return (
-    <aside className="phone-preview" aria-label="Anteprima mobile">
+    <aside className="phone-preview mobile-screen" aria-label="Home mobile">
       <div className="phone-top">
-        <button type="button" className="phone-icon-button" onClick={onOpenColonies} aria-label="Apri colonie">
+        <button type="button" className="phone-icon-button" onClick={onOpenCreateColony} aria-label="Nuova colonia">
           <Menu size={18} />
         </button>
         <span>
           <Cat size={18} />
           gattografy
         </span>
-        <button type="button" className="phone-icon-button" onClick={onRequireAuth} aria-label="Apri notifiche">
+        <button type="button" className="phone-icon-button" onClick={onRequireAuth} aria-label="Notifiche">
           <Bell size={17} />
         </button>
       </div>
-      <div className="phone-map">
-        <button>
-          <MapPin size={15} />
-        </button>
-        <button className="pin-two">9</button>
-        <button className="pin-three">2</button>
+      <div className="phone-map live-map">
+        {validColonies.length > 0 ? (
+          <MapContainer
+            center={[Number(selectedColony.lat), Number(selectedColony.lng)]}
+            zoom={15}
+            scrollWheelZoom
+            className="real-map mobile-real-map"
+          >
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+            <MapFlyTo selected={selectedColony} />
+            {validColonies.map((colony) => (
+              <Marker
+                key={colony.id}
+                position={[Number(colony.lat), Number(colony.lng)]}
+                icon={colony.id === selectedId ? selectedMarkerIcon : colonyMarkerIcon}
+                eventHandlers={{ click: () => onSelectColony(colony.id) }}
+              />
+            ))}
+          </MapContainer>
+        ) : (
+          <div className="empty-state compact">
+            <MapPin size={18} />
+            <strong>Nessuna colonia mappata</strong>
+          </div>
+        )}
       </div>
-      <article className="phone-card">
-        <PhotoImage photo={selected.photos[0]} alt="" />
+      <article className="phone-card" role="button" tabIndex={0} onClick={() => activeColony.id && onOpenColony(activeColony.id)} onKeyDown={(event) => (event.key === "Enter" || event.key === " ") && activeColony.id && onOpenColony(activeColony.id)}>
+        <PhotoImage photo={activeColony.photos[0]} alt="" />
         <div>
-          <strong>{selected.name}</strong>
-          <small>{selected.zone}</small>
-          <span>{selected.status}</span>
+          <strong>{activeColony.name}</strong>
+          <small>{activeColony.zone}</small>
+          <span>{activeColony.aslDeclared ? "Dichiarata ASL" : "Da verificare"}</span>
         </div>
       </article>
       <div className="phone-stats">
         <span>
-          <Cat size={16} /> {selected.cats} Gatti
+          <Cat size={16} /> {activeColony.cats} Gatti
         </span>
         <span>
-          <PawPrint size={16} /> {selected.kittens} Cucciolate
+          <PawPrint size={16} /> {activeColony.kittens} Cucciolate
         </span>
       </div>
       <div className="phone-actions">
-        <button onClick={() => runProtected(onAddCat)}>Aggiungi un gatto</button>
-        <button onClick={() => runProtected(onOpenReports)}>Segnala avvistamento</button>
-        <button onClick={() => runProtected(onReportKitten)}>Segnala cucciolata</button>
-        <button onClick={() => runProtected(onOpenReports)}>Richiedi aiuto</button>
+        <button onClick={() => runProtected(onOpenCreateCat)}>Aggiungi un gatto</button>
+        <button onClick={() => runProtected(onOpenBirthReport)}>Segnala cucciolata</button>
+        <button onClick={() => runProtected(onOpenRescueReport)}>Richiedi aiuto</button>
       </div>
     </aside>
   );
