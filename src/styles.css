@@ -444,6 +444,50 @@ kbd {
   object-fit: cover;
 }
 
+.favorite-toggle {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 7px;
+  background: #f6faf8;
+  color: var(--muted);
+}
+
+.favorite-toggle.active {
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+
+.panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 14px;
+}
+
+.danger-button {
+  min-height: 36px;
+  border-radius: 7px;
+  padding: 0 12px;
+  background: var(--coral-soft);
+  color: var(--coral);
+  font-weight: 800;
+}
+
+.moderation-modal textarea,
+.moderation-modal select {
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 10px 12px;
+}
+
+.moderation-modal textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
 .content-grid {
   display: grid;
   grid-template-columns: minmax(480px, 1fr) minmax(360px, 42%);

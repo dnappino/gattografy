@@ -2383,6 +2383,9 @@ function App() {
             changeLog={changeLog}
             reports={reports}
             onCreateHelpRequest={createHelpRequest}
+            favoriteColonyIds={favoriteColonyIds}
+            onToggleFavorite={toggleFavorite}
+            onReportTarget={setModerationTarget}
           />
         )}
         {activeSection === "Colonie" && (
@@ -2419,6 +2422,11 @@ function App() {
             draft={draft}
             setDraft={setDraft}
             addComment={addComment}
+            favoriteColonyIds={favoriteColonyIds}
+            onToggleFavorite={toggleFavorite}
+            onReportTarget={setModerationTarget}
+            onDeleteColony={deleteColony}
+            isSiteAdmin={isSiteAdmin}
           />
         )}
         {activeSection === "Gatti" && (
@@ -2429,6 +2437,9 @@ function App() {
             onSaveCat={saveCat}
             onCreateCat={createCatForColony}
             defaultColonyId={defaultColonyId}
+            favoriteCatIds={favoriteCatIds}
+            onToggleFavorite={toggleFavorite}
+            onReportTarget={setModerationTarget}
           />
         )}
         {activeSection === "Segnalazioni" && (
@@ -2468,6 +2479,10 @@ function App() {
             profiles={profiles}
             privateMessages={privateMessages}
             onSendPrivateMessage={sendPrivateMessage}
+            currentUser={currentUser}
+            isSiteAdmin={isSiteAdmin}
+            onDeleteMessage={deletePrivateMessage}
+            onReportTarget={setModerationTarget}
           />
         )}
         {activeSection === "Messaggi" && !isAuthenticated && (
@@ -2489,6 +2504,11 @@ function App() {
             onRequestFriend={requestFriend}
             onCreateForumThread={createForumThread}
             onAddForumPost={addForumPost}
+            currentUser={currentUser}
+            isSiteAdmin={isSiteAdmin}
+            onDeleteThread={deleteForumThread}
+            onDeletePost={deleteForumPost}
+            onReportTarget={setModerationTarget}
           />
         )}
         {activeSection === "Community" && !isAuthenticated && (
@@ -2517,6 +2537,13 @@ function App() {
           authStatus={authStatus}
           onSave={saveProfile}
           onClose={() => setProfileOpen(false)}
+        />
+      )}
+      {moderationTarget && (
+        <ModerationReportModal
+          target={moderationTarget}
+          onSubmit={submitModerationReport}
+          onClose={() => setModerationTarget(null)}
         />
       )}
     </main>
@@ -2724,6 +2751,9 @@ function MapSection({
   changeLog,
   reports,
   onCreateHelpRequest,
+  favoriteColonyIds,
+  onToggleFavorite,
+  onReportTarget,
 }) {
   const visibleColonies = mapBounds
     ? colonies.filter((colony) => mapBounds.contains([colony.lat, colony.lng]))
@@ -2746,6 +2776,8 @@ function MapSection({
           onSelect={onSelect}
           onOpenColony={onOpenColony}
           isAuthenticated={isAuthenticated}
+          favoriteColonyIds={favoriteColonyIds}
+          onToggleFavorite={onToggleFavorite}
         />
       </section>
       <DetailPanel
@@ -2778,6 +2810,9 @@ function MapSection({
         helpReports={helpReports}
         changeLog={changeLog}
         onCreateHelpRequest={onCreateHelpRequest}
+        favoriteColonyIds={favoriteColonyIds}
+        onToggleFavorite={onToggleFavorite}
+        onReportTarget={onReportTarget}
       />
     </div>
   );
@@ -2831,7 +2866,21 @@ function MapCanvas({ colonies, selectedId, onSelect, onOpenColony, onBoundsChang
   );
 }
 
-function ColonyList({ colonies, selectedId, onSelect, onOpenColony, isAuthenticated }) {
+function FavoriteButton({ active, onClick, label = "elemento" }) {
+  return (
+    <button
+      type="button"
+      className={active ? "favorite-toggle active" : "favorite-toggle"}
+      onClick={onClick}
+      aria-label={active ? `Rimuovi ${label} dai preferiti` : `Aggiungi ${label} ai preferiti`}
+      title={active ? "Rimuovi dai preferiti" : "Aggiungi ai preferiti"}
+    >
+      <Star size={17} fill={active ? "currentColor" : "none"} />
+    </button>
+  );
+}
+
+function ColonyList({ colonies, selectedId, onSelect, onOpenColony, isAuthenticated, favoriteColonyIds, onToggleFavorite }) {
   return (
     <section className="colony-list">
       <div className="list-heading">
@@ -2875,6 +2924,16 @@ function ColonyList({ colonies, selectedId, onSelect, onOpenColony, isAuthentica
           <span className={colony.aslDeclared ? "asl-tag declared" : "asl-tag"}>
             {colony.aslDeclared ? "ASL sì" : "ASL no"}
           </span>
+          {isAuthenticated && (
+            <FavoriteButton
+              active={favoriteColonyIds?.has(colony.id)}
+              label={colony.name}
+              onClick={(event) => {
+                event.stopPropagation();
+                onToggleFavorite("colony", colony.id);
+              }}
+            />
+          )}
           {isAuthenticated && (
             <button
               className="row-open-button"
@@ -2953,6 +3012,9 @@ function DetailPanel({
   cats,
   helpReports,
   changeLog = [],
+  favoriteColonyIds,
+  onToggleFavorite,
+  onReportTarget,
 }) {
   const openHelp = helpReports.filter((report) => report.colonyId === selected.id).slice(0, 2);
   const collaboratorCount = selected.collaborators?.length ?? 0;
@@ -2973,6 +3035,27 @@ function DetailPanel({
         </div>
         <button className="status-button">{selected.status}</button>
       </div>
+      {isAuthenticated && (
+        <div className="panel-actions">
+          <FavoriteButton
+            active={favoriteColonyIds?.has(selected.id)}
+            label={selected.name}
+            onClick={() => onToggleFavorite("colony", selected.id)}
+          />
+          <button
+            className="secondary-button"
+            onClick={() =>
+              onReportTarget({
+                targetType: "colonia",
+                targetId: selected.id,
+                targetLabel: selected.name,
+              })
+            }
+          >
+            Segnala
+          </button>
+        </div>
+      )}
       <div className="quick-facts">
         <Fact icon={Cat} label="Gatti" value={selected.cats} />
         <Fact icon={PawPrint} label="Cucciolate" value={selected.kittens} />
@@ -3693,6 +3776,11 @@ function ColoniesSection({
   draft,
   setDraft,
   addComment,
+  favoriteColonyIds,
+  onToggleFavorite,
+  onReportTarget,
+  onDeleteColony,
+  isSiteAdmin,
 }) {
   const [isCreating, setCreating] = useState(false);
   const [newColony, setNewColony] = useState({
@@ -3983,6 +4071,11 @@ function ColoniesSection({
         draft={draft}
         setDraft={setDraft}
         addComment={addComment}
+        favoriteColonyIds={favoriteColonyIds}
+        onToggleFavorite={onToggleFavorite}
+        onReportTarget={onReportTarget}
+        onDeleteColony={onDeleteColony}
+        isSiteAdmin={isSiteAdmin}
       />
     </section>
   );
@@ -4010,6 +4103,11 @@ function ColonyFullPanel({
   draft,
   setDraft,
   addComment,
+  favoriteColonyIds,
+  onToggleFavorite,
+  onReportTarget,
+  onDeleteColony,
+  isSiteAdmin,
 }) {
   const [activeTab, setActiveTab] = useState("Scheda");
   const tabs = ["Scheda", "Permessi", "Sanitario", "Foto e gatti", "Discussione"];
@@ -4030,6 +4128,32 @@ function ColonyFullPanel({
         </div>
         <button className="status-button">{selected.status}</button>
       </div>
+      {isAuthenticated && (
+        <div className="panel-actions">
+          <FavoriteButton
+            active={favoriteColonyIds?.has(selected.id)}
+            label={selected.name}
+            onClick={() => onToggleFavorite("colony", selected.id)}
+          />
+          <button
+            className="secondary-button"
+            onClick={() =>
+              onReportTarget({
+                targetType: "colonia",
+                targetId: selected.id,
+                targetLabel: selected.name,
+              })
+            }
+          >
+            Segnala
+          </button>
+          {isSiteAdmin && (
+            <button className="danger-button" onClick={() => onDeleteColony(selected.id)}>
+              Cancella
+            </button>
+          )}
+        </div>
+      )}
       <div className="facts">
         <Fact icon={ShieldCheck} label="Responsabile colonia" value={selected.responsible ?? selected.admin} />
         <Fact icon={Users} label="Referente" value={selected.caretaker} />
@@ -4283,7 +4407,7 @@ function CatCreatePanel({ colonies, onCreateCat, onDone, defaultColonyId }) {
   );
 }
 
-function CatsSection({ colonies, catsByColony, canEdit, onSaveCat, onCreateCat, defaultColonyId }) {
+function CatsSection({ colonies, catsByColony, canEdit, onSaveCat, onCreateCat, defaultColonyId, favoriteCatIds, onToggleFavorite, onReportTarget }) {
   const registryCats = colonies.flatMap((colony) =>
     (catsByColony[colony.id] ?? []).map((cat, index) => ({
       ...cat,
@@ -4321,6 +4445,22 @@ function CatsSection({ colonies, catsByColony, canEdit, onSaveCat, onCreateCat, 
               <small>{cat.colony}</small>
               <em>Ultimo avvistamento: {cat.lastSeen}</em>
             </div>
+            <FavoriteButton
+              active={favoriteCatIds?.has(cat.id)}
+              label={cat.name}
+              onClick={() => onToggleFavorite("cat", cat.id)}
+            />
+            <button
+              onClick={() =>
+                onReportTarget({
+                  targetType: "gatto",
+                  targetId: cat.id,
+                  targetLabel: cat.name,
+                })
+              }
+            >
+              Segnala
+            </button>
             {canEdit && <button onClick={() => setEditingCat(cat)}>Modifica</button>}
           </article>
         ))}
@@ -4462,7 +4602,7 @@ function FavoritesSection({ favoriteColonies, favoriteCats, onOpenColony, onTogg
   );
 }
 
-function MessagesSection({ profiles, privateMessages, onSendPrivateMessage }) {
+function MessagesSection({ profiles, privateMessages, onSendPrivateMessage, currentUser, isSiteAdmin, onDeleteMessage, onReportTarget }) {
   const [recipientId, setRecipientId] = useState(profiles[0]?.id ?? "");
   const [draft, setDraft] = useState("");
 
@@ -4506,6 +4646,24 @@ function MessagesSection({ profiles, privateMessages, onSendPrivateMessage }) {
                 <span>{message.time}</span>
                 <p>{message.text}</p>
                 <small>A: {message.to}</small>
+                <div className="row-actions">
+                  <button
+                    onClick={() =>
+                      onReportTarget({
+                        targetType: "messaggio",
+                        targetId: message.id,
+                        targetLabel: `Messaggio di ${message.from}`,
+                      })
+                    }
+                  >
+                    Segnala
+                  </button>
+                  {(isSiteAdmin || isOwnedByCurrentUser(message, currentUser)) && (
+                    <button className="danger-button" onClick={() => onDeleteMessage(message.id)}>
+                      Cancella
+                    </button>
+                  )}
+                </div>
               </article>
             ))}
             {!privateMessages.length && <p className="empty-copy">Nessun messaggio privato.</p>}
@@ -4528,11 +4686,28 @@ function CommunitySection({
   onRequestFriend,
   onCreateForumThread,
   onAddForumPost,
+  currentUser,
+  isSiteAdmin,
+  onDeleteThread,
+  onDeletePost,
+  onReportTarget,
 }) {
+  const relatedFriendRequests = (profile) =>
+    friendRequests.filter((request) => request.profileId === profile.id || request.user === profile.username);
+
   return (
     <section className="page-section">
       <PageHeader title="Community" action="Invita utente" />
-      <ForumPanel threads={forumThreads} onCreateThread={onCreateForumThread} onAddPost={onAddForumPost} />
+      <ForumPanel
+        threads={forumThreads}
+        onCreateThread={onCreateForumThread}
+        onAddPost={onAddForumPost}
+        currentUser={currentUser}
+        isSiteAdmin={isSiteAdmin}
+        onDeleteThread={onDeleteThread}
+        onDeletePost={onDeletePost}
+        onReportTarget={onReportTarget}
+      />
       <div className="community-grid">
         <div className="table-panel">
           <h2>Utenti</h2>
@@ -4543,7 +4718,23 @@ function CommunitySection({
                 <p>{profile.email}</p>
                 <small>{profile.role}</small>
               </div>
-              <button onClick={() => onRequestFriend(profile.id)}>Amicizia</button>
+              <button
+                disabled={relatedFriendRequests(profile).length > 0}
+                onClick={() => onRequestFriend(profile.id)}
+              >
+                {relatedFriendRequests(profile).length ? "Richiesta inviata" : "Amicizia"}
+              </button>
+              <button
+                onClick={() =>
+                  onReportTarget({
+                    targetType: "utente",
+                    targetId: profile.id,
+                    targetLabel: profile.username,
+                  })
+                }
+              >
+                Segnala
+              </button>
             </article>
           ))}
           {!profiles.length && <p className="empty-copy padded">Nessun altro utente registrato.</p>}
@@ -4595,7 +4786,7 @@ function CommunitySection({
   );
 }
 
-function ForumPanel({ threads, onCreateThread, onAddPost }) {
+function ForumPanel({ threads, onCreateThread, onAddPost, currentUser, isSiteAdmin, onDeleteThread, onDeletePost, onReportTarget }) {
   const [draft, setDraft] = useState({ title: "", body: "", category: "Generale" });
   const [replyDrafts, setReplyDrafts] = useState({});
   const [selectedThreadId, setSelectedThreadId] = useState(threads[0]?.id ?? "");
@@ -4672,6 +4863,24 @@ function ForumPanel({ threads, onCreateThread, onAddPost }) {
               <span>{selectedThread.category}</span>
               <h2>{selectedThread.title}</h2>
               <small>{selectedThread.author} · {selectedThread.time}</small>
+              <div className="row-actions">
+                <button
+                  onClick={() =>
+                    onReportTarget({
+                      targetType: "thread",
+                      targetId: selectedThread.id,
+                      targetLabel: selectedThread.title,
+                    })
+                  }
+                >
+                  Segnala
+                </button>
+                {(isSiteAdmin || isOwnedByCurrentUser(selectedThread, currentUser)) && (
+                  <button className="danger-button" onClick={() => onDeleteThread(selectedThread.id)}>
+                    Cancella
+                  </button>
+                )}
+              </div>
             </header>
             {selectedThread.body && <p className="forum-body">{selectedThread.body}</p>}
             <section className="forum-replies">
@@ -4681,6 +4890,24 @@ function ForumPanel({ threads, onCreateThread, onAddPost }) {
                   <strong>{post.author}</strong>
                   <p>{post.body}</p>
                   <small>{post.time}</small>
+                  <div className="row-actions">
+                    <button
+                      onClick={() =>
+                        onReportTarget({
+                          targetType: "messaggio forum",
+                          targetId: post.id,
+                          targetLabel: `Risposta di ${post.author}`,
+                        })
+                      }
+                    >
+                      Segnala
+                    </button>
+                    {(isSiteAdmin || isOwnedByCurrentUser(post, currentUser)) && (
+                      <button className="danger-button" onClick={() => onDeletePost(selectedThread.id, post.id)}>
+                        Cancella
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
               {!selectedThread.posts?.length && <p className="empty-copy">Nessuna risposta.</p>}
@@ -4837,6 +5064,49 @@ function ProfileModal({ currentUser, authStatus, onSave, onClose }) {
   );
 }
 
+function ModerationReportModal({ target, onSubmit, onClose }) {
+  const [draft, setDraft] = useState({
+    reason: "Attività sospette",
+    details: "",
+  });
+  const [isSending, setSending] = useState(false);
+
+  async function submit(event) {
+    event.preventDefault();
+    setSending(true);
+    const sent = await onSubmit({ ...target, ...draft });
+    setSending(false);
+    if (sent) onClose();
+  }
+
+  return (
+    <form className="register-modal moderation-modal" aria-label="Segnalazione moderazione" onSubmit={submit}>
+      <div className="modal-tabs profile-tabs">
+        <button type="button" className="selected">Segnalazione</button>
+        <button type="button" className="close" onClick={onClose} aria-label="Chiudi">
+          <X size={18} />
+        </button>
+      </div>
+      <strong>{target.targetLabel}</strong>
+      <label>
+        Motivo
+        <select value={draft.reason} onChange={(event) => setDraft((current) => ({ ...current, reason: event.target.value }))}>
+          <option>Attività sospette</option>
+          <option>maltrattamenti</option>
+          <option>Linguaggio offensivo</option>
+        </select>
+      </label>
+      <label>
+        Dettagli
+        <textarea value={draft.details} onChange={(event) => setDraft((current) => ({ ...current, details: event.target.value }))} />
+      </label>
+      <button className="primary" disabled={isSending}>
+        {isSending ? "Invio..." : "Invia segnalazione"}
+      </button>
+    </form>
+  );
+}
+
 function RegisterModal({
   authMode,
   setAuthMode,
@@ -4983,4 +5253,5 @@ function PhotoImage({ photo, alt }) {
 }
 
 createRoot(document.getElementById("root")).render(<App />);
+
 
