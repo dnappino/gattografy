@@ -62,7 +62,7 @@ select:focus-visible {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 264px minmax(0, 1fr) 300px;
+  grid-template-columns: 264px minmax(0, 1fr);
   gap: 18px;
   min-height: 100vh;
   padding: 16px;
@@ -2484,6 +2484,7 @@ select {
 
 .phone-preview {
   align-self: start;
+  display: none;
   border-radius: 26px;
   padding: 12px;
   position: sticky;
@@ -2496,6 +2497,20 @@ select {
   justify-content: space-between;
   min-height: 44px;
   padding: 0 8px;
+}
+
+.phone-icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink);
+}
+
+.phone-icon-button:hover {
+  background: var(--surface-soft);
 }
 
 .phone-top span {
@@ -2635,6 +2650,36 @@ select {
   background: var(--coral);
 }
 
+.home-colony-actions {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0;
+}
+
+.home-colony-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  border-radius: 8px;
+  background: var(--green);
+  color: #fff;
+  font-weight: 800;
+}
+
+.home-colony-actions button:nth-child(2) {
+  background: var(--amber);
+}
+
+.home-colony-actions button:nth-child(3) {
+  background: var(--coral);
+}
+
+.compact-sighting-form {
+  margin-top: 14px;
+}
+
 @media (max-width: 1500px) {
   .app-shell {
     grid-template-columns: 238px minmax(0, 1fr);
@@ -2698,6 +2743,37 @@ select {
 @media (max-width: 720px) {
   .app-shell {
     padding: 10px;
+  }
+
+  .app-shell.mobile-home-active {
+    display: block;
+    width: min(100%, 330px);
+    min-height: 100vh;
+    margin: 0 auto;
+    padding: 8px;
+  }
+
+  .app-shell.mobile-home-active .sidebar,
+  .app-shell.mobile-home-active .workspace {
+    display: none;
+  }
+
+  .app-shell.mobile-home-active .phone-preview {
+    display: block;
+    position: static;
+    width: 100%;
+    min-height: auto;
+    padding: 12px;
+    border-radius: 28px;
+    background: rgba(255, 255, 255, 0.97);
+  }
+
+  .app-shell.mobile-home-active .phone-map {
+    height: 172px;
+  }
+
+  .app-shell.mobile-home-active .phone-card {
+    border-radius: 16px;
   }
 
   .topbar {

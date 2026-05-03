@@ -219,10 +219,15 @@ function MapFlyTo({ selected }) {
   const map = useMap();
 
   React.useEffect(() => {
-    map.flyTo([selected.lat, selected.lng], 15, { duration: 0.75 });
+    if (!hasValidCoordinates(selected)) return;
+    map.flyTo([Number(selected.lat), Number(selected.lng)], 15, { duration: 0.75 });
   }, [map, selected.lat, selected.lng]);
 
   return null;
+}
+
+function hasValidCoordinates(item) {
+  return Number.isFinite(Number(item?.lat)) && Number.isFinite(Number(item?.lng));
 }
 
 function MapBoundsTracker({ onBoundsChange }) {
@@ -458,6 +463,7 @@ function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [mapBounds, setMapBounds] = useState(null);
   const [userPosition, setUserPosition] = useState(null);
+  const [isMobileViewport, setMobileViewport] = useState(false);
   const selected = useMemo(
     () => colonies.find((colony) => colony.id === selectedId) ?? colonies[0],
     [colonies, selectedId],
@@ -522,6 +528,16 @@ function App() {
         .some((value) => String(value).toLowerCase().includes(query)),
     );
   }, [colonies, searchQuery]);
+  const useMobileHome = activeSection === "Mappa" && isMobileViewport;
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const media = window.matchMedia("(max-width: 720px)");
+    const syncViewport = () => setMobileViewport(media.matches);
+    syncViewport();
+    media.addEventListener?.("change", syncViewport);
+    return () => media.removeEventListener?.("change", syncViewport);
+  }, []);
 
   useEffect(() => {
     let unsubscribe = null;
@@ -2325,7 +2341,7 @@ function App() {
   }
 
   return (
-    <main className="app-shell">
+    <main className={useMobileHome ? "app-shell mobile-home-active" : "app-shell"}>
       <Sidebar activeSection={activeSection} onSectionChange={setActiveSection} counts={menuCounts} />
       <section className="workspace">
         <Topbar
@@ -2351,7 +2367,7 @@ function App() {
           onMarkNotificationRead={markNotificationRead}
           onLogout={signOut}
         />
-        {activeSection === "Mappa" && (
+        {activeSection === "Mappa" && !useMobileHome && (
           <MapSection
             colonies={filteredColonies}
             selected={selected}
@@ -2400,6 +2416,7 @@ function App() {
             favoriteColonyIds={favoriteColonyIds}
             onToggleFavorite={toggleFavorite}
             onReportTarget={setModerationTarget}
+            onOpenReports={() => setActiveSection("Segnalazioni")}
           />
         )}
         {activeSection === "Colonie" && (
@@ -2454,6 +2471,7 @@ function App() {
             favoriteCatIds={favoriteCatIds}
             onToggleFavorite={toggleFavorite}
             onReportTarget={setModerationTarget}
+            onCreateHelpRequest={createHelpRequest}
           />
         )}
         {activeSection === "Segnalazioni" && (
@@ -2532,7 +2550,18 @@ function App() {
           }} />
         )}
       </section>
-      <MobilePreview selected={selected} onAddCat={addCat} onReportKitten={reportKitten} canEdit={canEditSelected} />
+      <MobilePreview
+        selected={selected}
+        onAddCat={addCat}
+        onReportKitten={reportKitten}
+        isAuthenticated={isAuthenticated}
+        onOpenColonies={() => setActiveSection("Colonie")}
+        onOpenReports={() => setActiveSection("Segnalazioni")}
+        onRequireAuth={() => {
+          setAuthMode("login");
+          setRegisterOpen(true);
+        }}
+      />
       {isRegisterOpen && (
         <RegisterModal
           authMode={authMode}
@@ -2773,9 +2802,10 @@ function MapSection({
   favoriteColonyIds,
   onToggleFavorite,
   onReportTarget,
+  onOpenReports,
 }) {
   const visibleColonies = mapBounds
-    ? colonies.filter((colony) => mapBounds.contains([colony.lat, colony.lng]))
+    ? colonies.filter((colony) => hasValidCoordinates(colony) && mapBounds.contains([Number(colony.lat), Number(colony.lng)]))
     : colonies;
 
   return (
@@ -2802,8 +2832,6 @@ function MapSection({
       <DetailPanel
         selected={selected}
         currentUser={currentUser}
-        onAddCat={onAddCat}
-        onReportKitten={onReportKitten}
         comments={comments}
         draft={draft}
         setDraft={setDraft}
@@ -2832,13 +2860,17 @@ function MapSection({
         favoriteColonyIds={favoriteColonyIds}
         onToggleFavorite={onToggleFavorite}
         onReportTarget={onReportTarget}
+        onAddCat={onAddCat}
+        onReportKitten={onReportKitten}
+        onOpenReports={onOpenReports}
       />
     </div>
   );
 }
 
 function MapCanvas({ colonies, selectedId, onSelect, onOpenColony, onBoundsChange }) {
-  const selected = colonies.find((colony) => colony.id === selectedId) ?? colonies[0];
+  const validColonies = colonies.filter(hasValidCoordinates);
+  const selected = validColonies.find((colony) => colony.id === selectedId) ?? validColonies[0];
   if (!selected) {
     return (
       <div className="map-canvas empty-state">
@@ -2855,7 +2887,7 @@ function MapCanvas({ colonies, selectedId, onSelect, onOpenColony, onBoundsChang
         Filtri
       </button>
       <MapContainer
-        center={[selected.lat, selected.lng]}
+        center={[Number(selected.lat), Number(selected.lng)]}
         zoom={15}
         scrollWheelZoom
         className="real-map"
@@ -2866,10 +2898,10 @@ function MapCanvas({ colonies, selectedId, onSelect, onOpenColony, onBoundsChang
         />
         <MapFlyTo selected={selected} />
         <MapBoundsTracker onBoundsChange={onBoundsChange} />
-        {colonies.map((colony) => (
+        {validColonies.map((colony) => (
           <Marker
             key={colony.id}
-            position={[colony.lat, colony.lng]}
+            position={[Number(colony.lat), Number(colony.lng)]}
             icon={colony.id === selectedId ? selectedMarkerIcon : colonyMarkerIcon}
             eventHandlers={{ click: () => onSelect(colony.id) }}
           >
@@ -3034,6 +3066,9 @@ function DetailPanel({
   favoriteColonyIds,
   onToggleFavorite,
   onReportTarget,
+  onAddCat,
+  onReportKitten,
+  onOpenReports,
 }) {
   const openHelp = helpReports.filter((report) => report.colonyId === selected.id).slice(0, 2);
   const collaboratorCount = selected.collaborators?.length ?? 0;
@@ -3090,6 +3125,20 @@ function DetailPanel({
           onClick={() => onRequestCollaboration(selected.id)}
         />
       )}
+      <div className="home-colony-actions">
+        <button onClick={onAddCat}>
+          <Plus size={16} />
+          Aggiungi un gatto
+        </button>
+        <button onClick={onReportKitten}>
+          <PawPrint size={16} />
+          Segnala cucciolata
+        </button>
+        <button onClick={onOpenReports}>
+          <Megaphone size={16} />
+          Richiedi aiuto
+        </button>
+      </div>
       <section className="mini-panel">
         <div className="section-title compact">
           <h2>Richieste di aiuto</h2>
@@ -4414,7 +4463,7 @@ function CatCreatePanel({ colonies, onCreateCat, onDone, defaultColonyId }) {
   );
 }
 
-function CatsSection({ colonies, catsByColony, canEdit, onSaveCat, onCreateCat, defaultColonyId, favoriteCatIds, onToggleFavorite, onReportTarget }) {
+function CatsSection({ colonies, catsByColony, canEdit, onSaveCat, onCreateCat, defaultColonyId, favoriteCatIds, onToggleFavorite, onReportTarget, onCreateHelpRequest }) {
   const registryCats = colonies.flatMap((colony) =>
     (catsByColony[colony.id] ?? []).map((cat, index) => ({
       ...cat,
@@ -4426,6 +4475,22 @@ function CatsSection({ colonies, catsByColony, canEdit, onSaveCat, onCreateCat, 
   );
   const [editingCat, setEditingCat] = useState(null);
   const [isCreating, setCreating] = useState(false);
+  const [sightingCat, setSightingCat] = useState(null);
+  const [sightingDraft, setSightingDraft] = useState("");
+
+  async function submitCatSighting(event) {
+    event.preventDefault();
+    if (!sightingCat) return;
+    const saved = await onCreateHelpRequest({
+      colonyId: sightingCat.colonyId,
+      type: "sighting",
+      title: `Avvistamento di ${sightingCat.name}`,
+      description: sightingDraft || `Avvistamento segnalato per ${sightingCat.name}.`,
+    });
+    if (!saved) return;
+    setSightingDraft("");
+    setSightingCat(null);
+  }
 
   return (
     <section className="page-section">
@@ -4468,10 +4533,28 @@ function CatsSection({ colonies, catsByColony, canEdit, onSaveCat, onCreateCat, 
             >
               Segnala
             </button>
+            <button onClick={() => setSightingCat(cat)}>Avvistamento</button>
             {canEdit && <button onClick={() => setEditingCat(cat)}>Modifica</button>}
           </article>
         ))}
       </div>
+      {sightingCat && (
+        <form className="edit-panel compact-sighting-form" onSubmit={submitCatSighting}>
+          <div className="section-title compact">
+            <h2>Avvistamento di {sightingCat.name}</h2>
+            <button type="button" onClick={() => setSightingCat(null)}>Annulla</button>
+          </div>
+          <label className="wide-field">
+            Dettagli
+            <textarea
+              value={sightingDraft}
+              onChange={(event) => setSightingDraft(event.target.value)}
+              placeholder="Luogo, orario, condizioni del gatto"
+            />
+          </label>
+          <button className="primary">Salva avvistamento</button>
+        </form>
+      )}
       {canEdit && editingCat && <CatEditPanel cat={editingCat} onSaveCat={onSaveCat} />}
       {!registryCats.length && <p className="empty-copy">Nessun gatto censito nel database.</p>}
     </section>
@@ -5236,16 +5319,28 @@ function RegisterModal({
   );
 }
 
-function MobilePreview({ selected, onAddCat, onReportKitten, canEdit }) {
+function MobilePreview({ selected, onAddCat, onReportKitten, isAuthenticated, onOpenColonies, onOpenReports, onRequireAuth }) {
+  const runProtected = (action) => {
+    if (!isAuthenticated) {
+      onRequireAuth();
+      return;
+    }
+    action();
+  };
+
   return (
     <aside className="phone-preview" aria-label="Anteprima mobile">
       <div className="phone-top">
-        <Menu size={18} />
+        <button type="button" className="phone-icon-button" onClick={onOpenColonies} aria-label="Apri colonie">
+          <Menu size={18} />
+        </button>
         <span>
           <Cat size={18} />
           gattografy
         </span>
-        <Bell size={17} />
+        <button type="button" className="phone-icon-button" onClick={onRequireAuth} aria-label="Apri notifiche">
+          <Bell size={17} />
+        </button>
       </div>
       <div className="phone-map">
         <button>
@@ -5270,14 +5365,12 @@ function MobilePreview({ selected, onAddCat, onReportKitten, canEdit }) {
           <PawPrint size={16} /> {selected.kittens} Cucciolate
         </span>
       </div>
-      {canEdit && (
-        <div className="phone-actions">
-          <button onClick={onAddCat}>Aggiungi un gatto</button>
-          <button>Segnala avvistamento</button>
-          <button onClick={onReportKitten}>Segnala cucciolata</button>
-          <button>Richiedi aiuto</button>
-        </div>
-      )}
+      <div className="phone-actions">
+        <button onClick={() => runProtected(onAddCat)}>Aggiungi un gatto</button>
+        <button onClick={() => runProtected(onOpenReports)}>Segnala avvistamento</button>
+        <button onClick={() => runProtected(onReportKitten)}>Segnala cucciolata</button>
+        <button onClick={() => runProtected(onOpenReports)}>Richiedi aiuto</button>
+      </div>
     </aside>
   );
 }
