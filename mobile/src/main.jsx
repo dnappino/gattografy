@@ -182,6 +182,22 @@ function App() {
     await actionFn();
   }
 
+  async function logout() {
+    const supabase = await getSupabaseClient();
+    try {
+      await supabase?.auth.signOut();
+    } finally {
+      setSessionUser(null);
+      setNotifications([]);
+      setCats([]);
+      setShowMenu(false);
+      setShowNotifications(false);
+      setShowLogin(false);
+      setTab("home");
+      setStatus("");
+    }
+  }
+
   const unreadCount = notifications.filter((item) => !item.read).length;
   const visibleNotifications = notifications.filter((item) => !item.read);
   const openFromMenu = (nextTab) => {
@@ -281,7 +297,7 @@ function App() {
       )}
 
       {tab === "profile" && (
-        <ProfileTab sessionUser={sessionUser} onOpenLogin={() => setShowLogin(true)} />
+        <ProfileTab sessionUser={sessionUser} onOpenLogin={() => setShowLogin(true)} onLogout={logout} />
       )}
 
       {showLogin && (
@@ -307,6 +323,7 @@ function App() {
               <button onClick={() => openFromMenu("report")}><Send size={16} />Segnala</button>
               <button onClick={() => openFromMenu("profile")}><UserRound size={16} />Profilo</button>
               <button onClick={() => { setAction("colony"); openFromMenu("new"); }}><Menu size={16} />Nuova colonia</button>
+              {sessionUser?.id && <button className="danger" onClick={logout}><X size={16} />Esci</button>}
             </div>
           </div>
         </section>
@@ -673,12 +690,15 @@ function ReportFlow({ selected, cats, colonies, sessionUser, preset, onDone, onR
   );
 }
 
-function ProfileTab({ sessionUser, onOpenLogin }) {
+function ProfileTab({ sessionUser, onOpenLogin, onLogout }) {
   return (
     <section className="mobile-card sheet">
       <h2>Profilo</h2>
       {sessionUser ? (
-        <p className="hint">{sessionUser.email}</p>
+        <>
+          <p className="hint">{sessionUser.email}</p>
+          <button className="ghost" onClick={onLogout}>Esci</button>
+        </>
       ) : (
         <button className="primary" onClick={onOpenLogin}>Accedi</button>
       )}
