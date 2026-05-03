@@ -26,6 +26,8 @@ import {
   Settings,
   ShieldCheck,
   Star,
+  Flag,
+  Trash2,
   Users,
   X,
 } from "lucide-react";
@@ -3043,7 +3045,6 @@ function DetailPanel({
             Apri in Google Maps
           </a>
         </div>
-        <button className="status-button">{selected.status}</button>
       </div>
       {isAuthenticated && (
         <div className="panel-actions">
@@ -3053,7 +3054,10 @@ function DetailPanel({
             onClick={() => onToggleFavorite("colony", selected.id)}
           />
           <button
-            className="secondary-button"
+            className="icon-action"
+            type="button"
+            aria-label={`Segnala ${selected.name}`}
+            title="Segnala colonia"
             onClick={() =>
               onReportTarget({
                 targetType: "colonia",
@@ -3062,7 +3066,7 @@ function DetailPanel({
               })
             }
           >
-            Segnala
+            <Flag size={16} />
           </button>
         </div>
       )}
@@ -4804,10 +4808,10 @@ function CommunitySection({
 }
 
 function ForumPanel({ threads, onCreateThread, onAddPost, currentUser, isSiteAdmin, onDeleteThread, onDeletePost, onReportTarget }) {
-  const [draft, setDraft] = useState({ title: "", body: "", category: "Generale" });
-  const [replyDrafts, setReplyDrafts] = useState({});
   const [selectedThreadId, setSelectedThreadId] = useState(threads[0]?.id ?? "");
-  const selectedThread = threads.find((thread) => thread.id === selectedThreadId) ?? threads[0] ?? null;
+  const [replyDrafts, setReplyDrafts] = useState({});
+  const [draft, setDraft] = useState({ title: "", body: "", category: "Generale" });
+  const selectedThread = threads.find((thread) => thread.id === selectedThreadId) ?? threads[0];
 
   useEffect(() => {
     if (!threads.length) {
@@ -4836,70 +4840,57 @@ function ForumPanel({ threads, onCreateThread, onAddPost, currentUser, isSiteAdm
           <span>{threads.length}</span>
         </div>
         <div className="forum-thread-list">
-          {threads.map((thread) => (
-            <button
-              type="button"
-              className={thread.id === selectedThread?.id ? "forum-thread-row active" : "forum-thread-row"}
-              key={thread.id}
-              onClick={() => setSelectedThreadId(thread.id)}
-            >
-              <span>{thread.category}</span>
-              <strong>{thread.title}</strong>
-              <small>{thread.author} · {thread.time} · {(thread.posts ?? []).length} risposte</small>
-            </button>
-          ))}
+          {threads.map((thread) => {
+            const isSelected = thread.id === selectedThread?.id;
+            return (
+              <article className={isSelected ? "forum-thread-item active" : "forum-thread-item"} key={thread.id}>
+                <button type="button" className="forum-thread-row" onClick={() => setSelectedThreadId(thread.id)}>
+                  <span>{thread.category}</span>
+                  <strong>{thread.title}</strong>
+                  <small>{thread.author} - {thread.time} - {(thread.posts ?? []).length} risposte</small>
+                </button>
+                {isSelected && (
+                  <div className="forum-inline-detail">
+                    {thread.body && <p className="forum-body">{thread.body}</p>}
+                    <div className="row-actions">
+                      <button
+                        className="icon-action"
+                        type="button"
+                        aria-label="Segnala thread"
+                        title="Segnala"
+                        onClick={() =>
+                          onReportTarget({
+                            targetType: "thread",
+                            targetId: thread.id,
+                            targetLabel: thread.title,
+                          })
+                        }
+                      >
+                        <Flag size={16} />
+                      </button>
+                      {(isSiteAdmin || isOwnedByCurrentUser(thread, currentUser)) && (
+                        <button
+                          className="icon-action danger"
+                          type="button"
+                          aria-label="Cancella thread"
+                          title="Cancella"
+                          onClick={() => onDeleteThread(thread.id)}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </article>
+            );
+          })}
           {!threads.length && <p className="empty-copy">Nessun thread aperto.</p>}
         </div>
-        <form className="forum-compose compact-compose" onSubmit={submitThread}>
-          <h3>Nuovo thread</h3>
-          <label>
-            Categoria
-            <select value={draft.category} onChange={(event) => setDraft((current) => ({ ...current, category: event.target.value }))}>
-              <option>Generale</option>
-              <option>Salute</option>
-              <option>Turni</option>
-              <option>Adozioni</option>
-              <option>Emergenze</option>
-            </select>
-          </label>
-          <label>
-            Titolo
-            <input value={draft.title} onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))} />
-          </label>
-          <label>
-            Testo
-            <textarea value={draft.body} onChange={(event) => setDraft((current) => ({ ...current, body: event.target.value }))} />
-          </label>
-          <button className="primary">Apri thread</button>
-        </form>
       </div>
       <article className="forum-reader social-card">
         {selectedThread ? (
           <>
-            <header className="forum-reader-title">
-              <span>{selectedThread.category}</span>
-              <h2>{selectedThread.title}</h2>
-              <small>{selectedThread.author} · {selectedThread.time}</small>
-              <div className="row-actions">
-                <button
-                  onClick={() =>
-                    onReportTarget({
-                      targetType: "thread",
-                      targetId: selectedThread.id,
-                      targetLabel: selectedThread.title,
-                    })
-                  }
-                >
-                  Segnala
-                </button>
-                {(isSiteAdmin || isOwnedByCurrentUser(selectedThread, currentUser)) && (
-                  <button className="danger-button" onClick={() => onDeleteThread(selectedThread.id)}>
-                    Cancella
-                  </button>
-                )}
-              </div>
-            </header>
-            {selectedThread.body && <p className="forum-body">{selectedThread.body}</p>}
             <section className="forum-replies">
               <h3>Risposte</h3>
               {(selectedThread.posts ?? []).map((post) => (
@@ -4909,6 +4900,10 @@ function ForumPanel({ threads, onCreateThread, onAddPost, currentUser, isSiteAdm
                   <small>{post.time}</small>
                   <div className="row-actions">
                     <button
+                      className="icon-action"
+                      type="button"
+                      aria-label="Segnala risposta"
+                      title="Segnala"
                       onClick={() =>
                         onReportTarget({
                           targetType: "messaggio forum",
@@ -4917,11 +4912,17 @@ function ForumPanel({ threads, onCreateThread, onAddPost, currentUser, isSiteAdm
                         })
                       }
                     >
-                      Segnala
+                      <Flag size={16} />
                     </button>
                     {(isSiteAdmin || isOwnedByCurrentUser(post, currentUser)) && (
-                      <button className="danger-button" onClick={() => onDeletePost(selectedThread.id, post.id)}>
-                        Cancella
+                      <button
+                        className="icon-action danger"
+                        type="button"
+                        aria-label="Cancella risposta"
+                        title="Cancella"
+                        onClick={() => onDeletePost(selectedThread.id, post.id)}
+                      >
+                        <Trash2 size={16} />
                       </button>
                     )}
                   </div>
@@ -4948,10 +4949,33 @@ function ForumPanel({ threads, onCreateThread, onAddPost, currentUser, isSiteAdm
           </div>
         )}
       </article>
+      <div className="forum-compose-card social-card">
+        <form className="forum-compose compact-compose" onSubmit={submitThread}>
+          <h3>Nuovo thread</h3>
+          <label>
+            Categoria
+            <select value={draft.category} onChange={(event) => setDraft((current) => ({ ...current, category: event.target.value }))}>
+              <option>Generale</option>
+              <option>Salute</option>
+              <option>Turni</option>
+              <option>Adozioni</option>
+              <option>Emergenze</option>
+            </select>
+          </label>
+          <label>
+            Titolo
+            <input value={draft.title} onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))} />
+          </label>
+          <label>
+            Testo
+            <textarea value={draft.body} onChange={(event) => setDraft((current) => ({ ...current, body: event.target.value }))} />
+          </label>
+          <button className="primary">Apri thread</button>
+        </form>
+      </div>
     </section>
   );
 }
-
 function PageHeader({ title, description, action, onAction }) {
   return (
     <header className="page-header">
