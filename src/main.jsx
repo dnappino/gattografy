@@ -1322,8 +1322,9 @@ function App() {
     if (!isAuthenticated || !canEditSelected) {
       setAuthMode("login");
       setRegisterOpen(true);
-      setDataStatus("Accedi con un utente autorizzato per modificare la colonia.");
-      return false;
+      const message = "Accedi con un utente autorizzato per modificare la colonia.";
+      setDataStatus(message);
+      return { ok: false, message };
     }
 
     const sterilizedMales = Number(patch.sterilizedMales) || 0;
@@ -1349,8 +1350,9 @@ function App() {
     };
 
     if (!cleaned.name || !cleaned.address || !cleaned.city || Number.isNaN(cleaned.lat) || Number.isNaN(cleaned.lng)) {
-      setDataStatus("Nome, indirizzo, città, latitudine e longitudine sono obbligatori.");
-      return false;
+      const message = "Nome, indirizzo, città, latitudine e longitudine sono obbligatori.";
+      setDataStatus(message);
+      return { ok: false, message };
     }
 
     const supabase = await getSupabaseClient();
@@ -1378,8 +1380,9 @@ function App() {
             : item,
         ),
       );
-      setDataStatus("Modifiche salvate nella demo locale.");
-      return true;
+      const message = "Modifiche salvate nella demo locale.";
+      setDataStatus(message);
+      return { ok: true, message };
     }
 
     setDataBusy(true);
@@ -1429,12 +1432,14 @@ function App() {
       if (error) throw error;
 
       applyLocalUpdate(data);
-      setDataStatus(`Colonia "${cleaned.name}" aggiornata su Supabase.`);
+      const message = `Colonia "${cleaned.name}" aggiornata su Supabase.`;
+      setDataStatus(message);
       await trackChange(colonyId, "colony", colonyId, "update", `Scheda colonia aggiornata da ${currentUser.username}`);
-      return true;
+      return { ok: true, message };
     } catch (error) {
-      setDataStatus(`Errore modifica colonia: ${error.message}`);
-      return false;
+      const message = `Errore modifica colonia: ${error.message}`;
+      setDataStatus(message);
+      return { ok: false, message };
     } finally {
       setDataBusy(false);
     }
@@ -3396,6 +3401,7 @@ function ColonyEditPanel({ selected, onUpdateColony }) {
   const [draft, setDraft] = useState(() => makeColonyDraft(selected));
   const [status, setStatus] = useState("");
   const [isGeocoding, setGeocoding] = useState(false);
+  const [isSaving, setSaving] = useState(false);
 
   useEffect(() => {
     setDraft(makeColonyDraft(selected));
@@ -3428,8 +3434,12 @@ function ColonyEditPanel({ selected, onUpdateColony }) {
     try {
       const response = await fetch(
         `https://nominatim.openstreetmap.org/search?format=json&limit=1&addressdetails=1&q=${encodeURIComponent(query)}`,
+        { headers: { Accept: "application/json" } },
       );
-      if (!response.ok) throw new Error("Servizio geocoding non disponibile.");
+      if (!response.ok) {
+        if (response.status === 429) throw new Error("Geocoding temporaneamente limitato: riprova tra poco.");
+        throw new Error("Servizio geocoding non disponibile.");
+      }
       const results = await response.json();
       const first = results[0];
       if (!first) {
@@ -3451,8 +3461,18 @@ function ColonyEditPanel({ selected, onUpdateColony }) {
 
   async function submit(event) {
     event.preventDefault();
-    const saved = await onUpdateColony(selected.id, draft);
-    setStatus(saved ? "Modifiche salvate." : "Salvataggio non riuscito.");
+    if (isSaving) return;
+    setSaving(true);
+    setStatus("Salvataggio in corso...");
+    try {
+      const result = await onUpdateColony(selected.id, draft);
+      if (result?.ok) setStatus(result.message || "Modifiche salvate.");
+      else setStatus(result?.message || "Salvataggio non riuscito.");
+    } catch (error) {
+      setStatus(error?.message || "Salvataggio non riuscito.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -3547,7 +3567,9 @@ function ColonyEditPanel({ selected, onUpdateColony }) {
         </label>
       </div>
       {status && <p className="form-note">{status}</p>}
-      <button className="primary">Salva modifiche</button>
+      <button className="primary" disabled={isSaving}>
+        {isSaving ? "Salvo..." : "Salva modifiche"}
+      </button>
     </form>
   );
 }
