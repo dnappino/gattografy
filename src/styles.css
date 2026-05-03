@@ -798,6 +798,10 @@ kbd {
   gap: 12px;
 }
 
+.forum-panel {
+  grid-template-columns: 1fr;
+}
+
 .social-card {
   min-width: 0;
   padding: 16px;
@@ -822,6 +826,10 @@ kbd {
 .forum-sidebar,
 .forum-reader {
   min-height: 520px;
+}
+
+.forum-sidebar {
+  min-height: auto;
 }
 
 .forum-heading,

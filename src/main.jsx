@@ -347,7 +347,7 @@ function dedupeParticipationRequests(requests = []) {
 function dedupeFriendRequests(requests = []) {
   const seen = new Set();
   return requests.filter((request) => {
-    const key = request.profileId || request.user || request.id;
+    const key = `${request.profileId || request.user || request.id}:${request.status || ""}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -1810,7 +1810,7 @@ function App() {
     }
     setFriendRequests((items) =>
       items.map((item) =>
-        item.id === requestId ? { ...item, accepted: true } : item,
+        item.id === requestId ? { ...item, accepted: true, status: "approved" } : item,
       ),
     );
     saveFriendApproval(requestId);
@@ -4694,6 +4694,13 @@ function CommunitySection({
 }) {
   const relatedFriendRequests = (profile) =>
     friendRequests.filter((request) => request.profileId === profile.id || request.user === profile.username);
+  const friendState = (profile) => {
+    const request = relatedFriendRequests(profile)[0];
+    if (!request) return { label: "Amicizia", disabled: false };
+    if (request.accepted || request.status === "approved") return { label: "Amici", disabled: true };
+    if (request.incoming) return { label: "Richiesta ricevuta", disabled: true };
+    return { label: "Richiesta inviata", disabled: true };
+  };
 
   return (
     <section className="page-section">
@@ -4719,10 +4726,10 @@ function CommunitySection({
                 <small>{profile.role}</small>
               </div>
               <button
-                disabled={relatedFriendRequests(profile).length > 0}
+                disabled={friendState(profile).disabled}
                 onClick={() => onRequestFriend(profile.id)}
               >
-                {relatedFriendRequests(profile).length ? "Richiesta inviata" : "Amicizia"}
+                {friendState(profile).label}
               </button>
               <button
                 onClick={() =>
