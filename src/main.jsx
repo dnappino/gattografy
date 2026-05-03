@@ -1627,6 +1627,21 @@ function App() {
     );
   }
 
+
+  function removeKitten() {
+    if (!canEditSelected) {
+      setAuthMode("login");
+      setRegisterOpen(true);
+      return;
+    }
+    setColonies((items) =>
+      items.map((item) =>
+        item.id === selected.id
+          ? { ...item, kittens: Math.max(0, (item.kittens ?? 0) - 1), status: "Attiva", updated: "adesso" }
+          : item,
+      ),
+    );
+  }
   function addComment() {
     if (!isAuthenticated) {
       setAuthMode("login");
@@ -4547,21 +4562,6 @@ function CatsSection({ colonies, catsByColony, canEdit, onSaveCat, onCreateCat, 
     setSightingCat(null);
   }
 
-  function removeKitten() {
-    if (!canEditSelected) {
-      setAuthMode("login");
-      setRegisterOpen(true);
-      return;
-    }
-    setColonies((items) =>
-      items.map((item) =>
-        item.id === selected.id
-          ? { ...item, kittens: Math.max(0, (item.kittens ?? 0) - 1), status: "Attiva", updated: "adesso" }
-          : item,
-      ),
-    );
-  }
-
   return (
     <section className="page-section">
       <PageHeader
@@ -5504,7 +5504,4 @@ function PhotoImage({ photo, alt }) {
 }
 
 createRoot(document.getElementById("root")).render(<App />);
-
-
-
 

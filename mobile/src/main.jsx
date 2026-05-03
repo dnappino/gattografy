@@ -183,6 +183,7 @@ function App() {
   }
 
   const unreadCount = notifications.filter((item) => !item.read).length;
+  const visibleNotifications = notifications.filter((item) => !item.read);
   const openFromMenu = (nextTab) => {
     setShowMenu(false);
     setTab(nextTab);
@@ -322,8 +323,8 @@ function App() {
               <button className="ghost" onClick={markAllNotificationsRead}>Segna tutte come lette</button>
             </div>
             <div className="list">
-              {notifications.length === 0 && <p className="hint">Nessuna notifica.</p>}
-              {notifications.map((item) => (
+              {visibleNotifications.length === 0 && <p className="hint">Nessuna notifica non letta.</p>}
+              {visibleNotifications.map((item) => (
                 <article key={item.id} className={item.read ? "notify-row read" : "notify-row"}>
                   <strong>{item.title}</strong>
                   <p>{item.body}</p>
