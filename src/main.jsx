@@ -898,7 +898,7 @@ function App() {
   }
 
   async function markAllNotificationsRead() {
-    setNotifications((items) => items.map((item) => ({ ...item, read: true })));
+    setNotifications([]);
 
     const supabase = await getSupabaseClient();
     if (!supabase || !currentUser?.id) return;
@@ -913,9 +913,7 @@ function App() {
   }
 
   async function markNotificationRead(notificationId) {
-    setNotifications((items) =>
-      items.map((item) => (item.id === notificationId ? { ...item, read: true } : item)),
-    );
+    setNotifications((items) => items.filter((item) => item.id !== notificationId));
 
     const supabase = await getSupabaseClient();
     if (!supabase || !currentUser?.id || String(notificationId).startsWith("local-")) return;
@@ -2336,6 +2334,7 @@ function App() {
           onApproveParticipation={approveParticipation}
           onRejectParticipation={rejectParticipation}
           onMarkAllNotificationsRead={markAllNotificationsRead}
+          onMarkNotificationRead={markNotificationRead}
           onLogout={signOut}
         />
         {activeSection === "Mappa" && (
@@ -2582,9 +2581,11 @@ function Topbar({
   onApproveParticipation,
   onRejectParticipation,
   onMarkAllNotificationsRead,
+  onMarkNotificationRead,
   onLogout,
 }) {
-  const unreadCount = notifications.filter((item) => !item.read).length;
+  const visibleNotifications = notifications.filter((item) => !item.read);
+  const unreadCount = visibleNotifications.length;
   const notificationCount = unreadCount + pendingCollaborationRequests.length;
   const notificationRef = useRef(null);
 
@@ -2645,14 +2646,17 @@ function Topbar({
                     </article>
                   );
                 })}
-                {notifications.map((item) => (
-                  <article key={item.id}>
+                {visibleNotifications.map((item) => (
+                  <article className="notification-action" key={item.id}>
                     <strong>{item.title}</strong>
                     <p>{item.body}</p>
                     <small>{item.time}</small>
+                    <div>
+                      <button onClick={() => onMarkNotificationRead(item.id)}>Segna come letta</button>
+                    </div>
                   </article>
                 ))}
-                {!notifications.length && !pendingCollaborationRequests.length && <p>Nessuna notifica.</p>}
+                {!visibleNotifications.length && !pendingCollaborationRequests.length && <p>Nessuna notifica.</p>}
               </div>
             )}
           </div>
@@ -2664,8 +2668,9 @@ function Topbar({
               <strong>{currentUser.username}</strong>
               <small>{currentUser.role}</small>
             </div>
-            <ChevronDown size={17} />
-            <button className="text-action" onClick={onOpenProfile}>Account</button>
+            <button className="icon-btn account-chevron" onClick={onOpenProfile} aria-label="Apri profilo">
+              <ChevronDown size={17} />
+            </button>
             <button className="text-action ghost" onClick={onLogout}>Esci</button>
           </>
         ) : (
