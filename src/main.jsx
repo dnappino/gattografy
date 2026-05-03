@@ -488,10 +488,20 @@ function App() {
     () => Object.values(catsByColony).flat(),
     [catsByColony],
   );
-  const favoriteCats = useMemo(
-    () => allCats.filter((cat) => favoriteCatIds.has(cat.id)),
-    [allCats, favoriteCatIds],
-  );
+  const favoriteCats = useMemo(() => {
+    const loadedCats = allCats.filter((cat) => favoriteCatIds.has(cat.id));
+    const loadedIds = new Set(loadedCats.map((cat) => cat.id));
+    const missingCats = favoriteItems
+      .filter((item) => item.catId && !loadedIds.has(item.catId))
+      .map((item) => ({
+        id: item.catId,
+        name: "Gatto preferito",
+        status: "Da caricare",
+        notes: "Apri la colonia collegata per caricare la scheda completa.",
+        photo: catPlaceholder,
+      }));
+    return [...loadedCats, ...missingCats];
+  }, [allCats, favoriteCatIds, favoriteItems]);
   const pendingCollaborationRequests = participationRequests.filter((request) => {
     if (request.status !== "In attesa") return false;
     const colony = colonies.find((item) => item.id === request.colonyId);
@@ -2943,7 +2953,7 @@ function ColonyList({ colonies, selectedId, onSelect, onOpenColony, isAuthentica
                 onOpenColony(colony.id);
               }}
             >
-              Apri scheda
+              <Eye size={17} />
             </button>
           )}
           <span className="row-updated">Aggiornata {colony.updated}</span>

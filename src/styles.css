@@ -1311,7 +1311,7 @@ select {
 
 .colony-row {
   display: grid;
-  grid-template-columns: 58px minmax(120px, 1fr) 56px 74px 66px auto;
+  grid-template-columns: 58px minmax(180px, 1fr) 56px 74px 66px 40px 40px;
   align-items: center;
   gap: 12px;
   width: 100%;
@@ -1386,14 +1386,13 @@ select {
 }
 
 .row-open-button {
-  min-height: 34px;
-  padding: 0 10px;
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
   border-radius: 7px;
   background: var(--green);
   color: #fff;
-  font-size: 0.78rem;
-  font-weight: 850;
-  white-space: nowrap;
 }
 
 .row-open-button:hover {
@@ -2704,7 +2703,7 @@ select {
   }
 
   .colony-row {
-    grid-template-columns: 54px minmax(0, 1fr) auto;
+    grid-template-columns: 54px minmax(0, 1fr) 40px 40px;
   }
 
   .row-stat:nth-of-type(2),
