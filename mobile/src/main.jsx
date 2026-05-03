@@ -717,9 +717,10 @@ function LoginSheet({ onClose, onLoginSuccess }) {
     event.preventDefault();
     const supabase = await getSupabaseClient();
     if (!supabase) return;
-    const fn = mode === "register" ? supabase.auth.signUp : supabase.auth.signInWithPassword;
     const payload = mode === "register" ? { email, password } : { email, password };
-    const { data, error } = await fn(payload);
+    const { data, error } = mode === "register"
+      ? await supabase.auth.signUp(payload)
+      : await supabase.auth.signInWithPassword(payload);
     if (error) {
       setStatus(error.message);
       return;
