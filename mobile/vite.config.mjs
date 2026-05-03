@@ -5,6 +5,7 @@ import path from "node:path";
 export default defineConfig({
   plugins: [react()],
   root: path.resolve(process.cwd(), "mobile"),
+  envDir: path.resolve(process.cwd()),
   base: "/gattografy/mobile/",
   build: {
     outDir: path.resolve(process.cwd(), "mobile-dist"),
@@ -15,4 +16,3 @@ export default defineConfig({
     port: 5175,
   },
 });
-
