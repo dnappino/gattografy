@@ -3316,7 +3316,7 @@ function DetailPanel({
       <div className="quick-facts">
         <Fact icon={Cat} label="Gatti" value={selected.cats} />
         <Fact icon={PawPrint} label="Cucciolate" value={selected.kittens} />
-        <Fact icon={ShieldCheck} label="ASL" value={selected.aslDeclared ? "Sì" : "No"} />
+        <Fact icon={ShieldCheck} label="ASL" value={selected.aslDeclared ? "Si" : "No"} />
         <Fact icon={Users} label="Responsabile" value={selected.responsible ?? selected.admin} />
         <Fact icon={HeartHandshake} label="Collaboratori" value={collaboratorCount} />
       </div>
@@ -4052,6 +4052,8 @@ function ColoniesSection({
   selected,
   currentUser,
   selectedId,
+  userPosition,
+  searchQuery,
   dataStatus,
   isDataBusy,
   isAuthenticated,
@@ -4083,6 +4085,8 @@ function ColoniesSection({
   openCreateToken = 0,
 }) {
   const [isCreating, setCreating] = useState(false);
+  const [isDetailOpen, setDetailOpen] = useState(false);
+  const [pageIndex, setPageIndex] = useState(0);
   const [newColony, setNewColony] = useState({
     name: "",
     address: "",
@@ -4105,6 +4109,27 @@ function ColoniesSection({
   const [isGeocoding, setGeocoding] = useState(false);
   const declaredCount = colonies.filter((colony) => colony.aslDeclared).length;
   const totalCats = colonies.reduce((sum, colony) => sum + colony.cats, 0);
+  const isSearching = Boolean(searchQuery?.trim());
+  const pageSize = isSearching ? 5 : 20;
+
+  const nearestColonies = useMemo(() => {
+    if (!userPosition) return [];
+    return [...colonies]
+      .filter(hasValidCoordinates)
+      .sort((a, b) => distanceKm(userPosition, a) - distanceKm(userPosition, b))
+      .slice(0, 4);
+  }, [colonies, userPosition]);
+
+  useEffect(() => {
+    setPageIndex(0);
+  }, [searchQuery, colonies.length]);
+
+  const totalPages = Math.max(1, Math.ceil(colonies.length / pageSize));
+  const safePageIndex = Math.min(pageIndex, totalPages - 1);
+  const pagedColonies = useMemo(() => {
+    const start = safePageIndex * pageSize;
+    return colonies.slice(start, start + pageSize);
+  }, [colonies, safePageIndex, pageSize]);
   const updateField = (field) => (event) => {
     const value = field === "aslDeclared" ? event.target.checked : event.target.value;
     setNewColony((current) => ({ ...current, [field]: value }));
@@ -4328,6 +4353,35 @@ function ColoniesSection({
         <Metric icon={Cat} label="Gatti censiti" value={totalCats} />
         <Metric icon={ShieldCheck} label="Dichiarate all'ASL" value={declaredCount} />
       </div>
+      {nearestColonies.length > 0 && (
+        <section className="nearest-panel" aria-label="Colonie più vicine">
+          <div className="section-title compact">
+            <h2>Più vicine</h2>
+          </div>
+          <div className="nearest-grid">
+            {nearestColonies.map((colony) => (
+              <button
+                key={colony.id}
+                type="button"
+                className={colony.id === selectedId ? "nearest-card selected" : "nearest-card"}
+                onClick={() => {
+                  onSelect(colony.id);
+                  setDetailOpen(true);
+                }}
+              >
+                <PhotoImage photo={colony.photos?.[0]} alt="" />
+                <div>
+                  <strong>{colony.name}</strong>
+                  <small>{colony.zone}</small>
+                </div>
+                <span>
+                  <Cat size={16} /> {colony.cats}
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
       <div className="table-panel">
         <div className="table-row head">
           <span>Colonia</span>
@@ -4336,7 +4390,7 @@ function ColoniesSection({
           <span>Gatti</span>
           <span>Azione</span>
         </div>
-        {colonies.map((colony) => (
+        {pagedColonies.map((colony) => (
           <div className={colony.id === selectedId ? "table-row selected" : "table-row"} key={colony.id}>
             <span>
               <strong>{colony.name}</strong>
@@ -4347,40 +4401,72 @@ function ColoniesSection({
               {colony.aslDeclared ? "ASL sì" : "ASL no"}
             </span>
             <span>{colony.cats}</span>
-            <button onClick={() => onSelect(colony.id)}>
+            <button onClick={() => { onSelect(colony.id); setDetailOpen(true); }}>
               {colony.id === selectedId ? "Aperta" : "Apri"}
             </button>
           </div>
         ))}
+        {isSearching && totalPages > 1 && (
+          <div className="table-pagination" role="navigation" aria-label="Paginazione colonie">
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => setPageIndex((value) => Math.max(0, value - 1))}
+              disabled={safePageIndex === 0}
+            >
+              Indietro
+            </button>
+            <span className="hint">
+              Pagina {safePageIndex + 1} / {totalPages}
+            </span>
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => setPageIndex((value) => Math.min(totalPages - 1, value + 1))}
+              disabled={safePageIndex >= totalPages - 1}
+            >
+              Avanti
+            </button>
+          </div>
+        )}
       </div>
-      <ColonyFullPanel
-        selected={selected}
-        currentUser={currentUser}
-        isAuthenticated={isAuthenticated}
-        canEdit={canEdit}
-        onRequireAuth={onRequireAuth}
-        participationRequests={participationRequests}
-        onToggleAsl={onToggleAsl}
-        onReplaceAdmin={onReplaceAdmin}
-        onApproveParticipation={onApproveParticipation}
-        onRejectParticipation={onRejectParticipation}
-        onRequestCollaboration={onRequestCollaboration}
-        onUpdateColony={onUpdateColony}
-        cats={cats}
-        onSaveCat={onSaveCat}
-        helpReports={helpReports}
-        changeLog={changeLog}
-        onCreateHelpRequest={onCreateHelpRequest}
-        comments={comments}
-        draft={draft}
-        setDraft={setDraft}
-        addComment={addComment}
-        favoriteColonyIds={favoriteColonyIds}
-        onToggleFavorite={onToggleFavorite}
-        onReportTarget={onReportTarget}
-        onDeleteColony={onDeleteColony}
-        isSiteAdmin={isSiteAdmin}
-      />
+      {isDetailOpen && (
+        <div className="dialog-backdrop" onClick={(event) => event.target === event.currentTarget && setDetailOpen(false)}>
+          <div className="dialog-panel">
+            <button className="dialog-close" type="button" onClick={() => setDetailOpen(false)} aria-label="Chiudi">
+              <X size={18} />
+            </button>
+            <ColonyFullPanel
+              selected={selected}
+              currentUser={currentUser}
+              isAuthenticated={isAuthenticated}
+              canEdit={canEdit}
+              onRequireAuth={onRequireAuth}
+              participationRequests={participationRequests}
+              onToggleAsl={onToggleAsl}
+              onReplaceAdmin={onReplaceAdmin}
+              onApproveParticipation={onApproveParticipation}
+              onRejectParticipation={onRejectParticipation}
+              onRequestCollaboration={onRequestCollaboration}
+              onUpdateColony={onUpdateColony}
+              cats={cats}
+              onSaveCat={onSaveCat}
+              helpReports={helpReports}
+              changeLog={changeLog}
+              onCreateHelpRequest={onCreateHelpRequest}
+              comments={comments}
+              draft={draft}
+              setDraft={setDraft}
+              addComment={addComment}
+              favoriteColonyIds={favoriteColonyIds}
+              onToggleFavorite={onToggleFavorite}
+              onReportTarget={onReportTarget}
+              onDeleteColony={onDeleteColony}
+              isSiteAdmin={isSiteAdmin}
+            />
+          </div>
+        </div>
+      )}
     </section>
   );
 }
@@ -4413,60 +4499,24 @@ function ColonyFullPanel({
   onDeleteColony,
   isSiteAdmin,
 }) {
-  const [activeTab, setActiveTab] = useState("Scheda");
+  const [activeTab, setActiveTab] = useState("Panoramica");
   const canManagePermissions = Boolean(isSiteAdmin || selected.adminId === currentUser?.id || selected.createdBy === currentUser?.id);
-  const tabs = ["Scheda", ...(canManagePermissions ? ["Permessi"] : []), "Sanitario", "Foto e gatti", "Discussione"];
+  const tabs = ["Panoramica", "Scheda", ...(canManagePermissions ? ["Permessi"] : []), "Sanitario", "Foto e gatti", "Discussione"];
   const isCollaborationPending = hasPendingCollaborationRequest(participationRequests, selected, currentUser);
 
   return (
     <section className="colony-full-panel">
       <div className="detail-title">
-        <span className="pin-badge">
+        <span className="pin-badge" aria-hidden="true">
           <MapPin size={20} />
         </span>
-        <div>
+        <div className="detail-title-text">
           <h1>{selected.name}</h1>
           <p>{selected.zone}</p>
           <a href={`https://www.google.com/maps?q=${selected.lat},${selected.lng}`} target="_blank" rel="noreferrer">
             Apri in Google Maps
           </a>
         </div>
-        <button className="status-button">{selected.status}</button>
-      </div>
-      {isAuthenticated && (
-        <div className="panel-actions">
-          <FavoriteButton
-            active={favoriteColonyIds?.has(selected.id)}
-            label={selected.name}
-            onClick={() => onToggleFavorite("colony", selected.id)}
-          />
-          <button
-            className="secondary-button"
-            onClick={() =>
-              onReportTarget({
-                targetType: "colonia",
-                targetId: selected.id,
-                targetLabel: selected.name,
-              })
-            }
-          >
-            Segnala
-          </button>
-          {isSiteAdmin && (
-            <button className="danger-button" onClick={() => onDeleteColony(selected.id)}>
-              Cancella
-            </button>
-          )}
-        </div>
-      )}
-      <div className="facts">
-        <Fact icon={ShieldCheck} label="Responsabile colonia" value={selected.responsible ?? selected.admin} />
-        <Fact icon={Users} label="Referente" value={selected.caretaker} />
-        <Fact icon={HeartHandshake} label="Collaboratori" value={selected.collaborators?.length ?? 0} />
-        <Fact icon={Clock3} label="Ultimo aggiornamento" value={selected.updated} />
-        <Fact icon={Cat} label="Gatti censiti" value={selected.cats} />
-        <Fact icon={PawPrint} label="Cucciolate (2026)" value={selected.kittens} />
-        <Fact icon={ShieldCheck} label="Dichiarata all'ASL" value={selected.aslDeclared ? "Sì" : "No"} />
       </div>
       {!isAuthenticated && <PublicReadOnlyNotice onRequireAuth={onRequireAuth} />}
       <div className="tabs">
@@ -4480,6 +4530,52 @@ function ColonyFullPanel({
           </button>
         ))}
       </div>
+      {activeTab === "Panoramica" && (
+        <>
+          {isAuthenticated && (
+            <div className="panel-actions">
+              <FavoriteButton
+                active={favoriteColonyIds?.has(selected.id)}
+                label={selected.name}
+                onClick={() => onToggleFavorite("colony", selected.id)}
+              />
+              <button
+                className="secondary-button"
+                onClick={() =>
+                  onReportTarget({
+                    targetType: "colonia",
+                    targetId: selected.id,
+                    targetLabel: selected.name,
+                  })
+                }
+                aria-label="Segnala colonia"
+                title="Segnala"
+              >
+                Segnala
+              </button>
+              {isSiteAdmin && (
+                <button
+                  className="danger-button"
+                  onClick={() => onDeleteColony(selected.id)}
+                  aria-label="Cancella colonia"
+                  title="Cancella"
+                >
+                  Cancella
+                </button>
+              )}
+            </div>
+          )}
+          <div className="facts">
+            <Fact icon={ShieldCheck} label="Responsabile colonia" value={selected.responsible ?? selected.admin} />
+            <Fact icon={Users} label="Referente" value={selected.caretaker} />
+            <Fact icon={HeartHandshake} label="Collaboratori" value={selected.collaborators?.length ?? 0} />
+            <Fact icon={Clock3} label="Ultimo aggiornamento" value={selected.updated} />
+            <Fact icon={Cat} label="Gatti censiti" value={selected.cats} />
+            <Fact icon={PawPrint} label="Cucciolate (2026)" value={selected.kittens} />
+            <Fact icon={ShieldCheck} label="Dichiarata all'ASL" value={selected.aslDeclared ? "Si" : "No"} />
+          </div>
+        </>
+      )}
       {activeTab === "Scheda" && (
         canEdit ? <ColonyEditPanel selected={selected} onUpdateColony={onUpdateColony} /> : <SanitaryPanel selected={selected} />
       )}
