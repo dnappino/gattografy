@@ -57,9 +57,9 @@ const avatarPresets = catPhotos.map((photo, index) => ({
 }));
 
 function resolveAvatar(value) {
-  if (!value) return catFive;
+  if (!value) return catPlaceholder;
   if (value.startsWith?.("preset:")) {
-    return avatarPresets.find((preset) => preset.id === value)?.photo ?? catFive;
+    return avatarPresets.find((preset) => preset.id === value)?.photo ?? catPlaceholder;
   }
   return value;
 }
@@ -67,7 +67,7 @@ function resolveAvatar(value) {
 const catPlaceholder =
   "data:image/svg+xml;utf8," +
   encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240"><rect width="240" height="240" rx="20" fill="#f7fbf8"/><circle cx="120" cy="126" r="72" fill="#e1f1e8"/><path d="M72 102 83 58l31 30h12l31-30 11 44c17 13 27 34 27 58 0 36-30 62-75 62s-75-26-75-62c0-24 10-45 27-58Z" fill="#2f7a5f"/><circle cx="94" cy="140" r="11" fill="#fff"/><circle cx="146" cy="140" r="11" fill="#fff"/><circle cx="98" cy="140" r="5" fill="#153f33"/><circle cx="142" cy="140" r="5" fill="#153f33"/><path d="M114 163h12l-6 8Z" fill="#e67869"/><path d="M98 182c14 10 30 10 44 0" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round"/><path d="M52 205h136" stroke="#c9ded2" stroke-width="6" stroke-linecap="round"/></svg>',
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120"><rect width="120" height="120" rx="24" fill="#f7fbf8"/><g fill="none" stroke="#2f7a5f" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"><path d="M33 46 27 26l20 14h26l20-14-6 20c10 7 16 19 16 32 0 21-17 37-43 37S17 99 17 78c0-13 6-25 16-32Z"/><path d="M48 70h0"/><path d="M72 70h0"/><path d="M58 82c2 2 2 2 4 0"/><path d="M46 90c9 8 19 8 28 0"/></g><g fill="#2f7a5f"><circle cx="48" cy="70" r="4"/><circle cx="72" cy="70" r="4"/></g></svg>',
   );
 
 const colonyPlaceholder =
@@ -1223,7 +1223,7 @@ function App() {
         updated: "adesso",
         lat: parsedLat,
         lng: parsedLng,
-        photos: [currentUser.avatar || catPhotos[0]],
+        photos: [currentUser.avatar || catPlaceholder],
       };
       setColonies((items) => [demoColony, ...items]);
       setSelectedId(demoColony.id);
@@ -2871,7 +2871,7 @@ function Topbar({
         )}
         {isAuthenticated ? (
           <>
-            <PhotoImage photo={currentUser.avatar || catPhotos[4]} alt="Avatar utente" />
+            <PhotoImage photo={currentUser.avatar || catPlaceholder} alt="Avatar utente" />
             <div>
               <strong>{currentUser.username}</strong>
               <small>{currentUser.role}</small>
@@ -5370,7 +5370,7 @@ function ProfileModal({ currentUser, authStatus, onSave, onClose }) {
         </button>
       </div>
       <div className="profile-preview">
-        <PhotoImage photo={draft.avatarPreview || catFive} alt="Avatar profilo" />
+        <PhotoImage photo={draft.avatarPreview || catPlaceholder} alt="Avatar profilo" />
         <div>
           <strong>{draft.username || currentUser.email}</strong>
           <small>{currentUser.email}</small>
