@@ -464,6 +464,7 @@ function App() {
   const [mapBounds, setMapBounds] = useState(null);
   const [userPosition, setUserPosition] = useState(null);
   const [isMobileViewport, setMobileViewport] = useState(false);
+  const [lightboxSrc, setLightboxSrc] = useState("");
   const [quickAction, setQuickAction] = useState({ type: "", key: 0, preset: "" });
   const selected = useMemo(
     () => colonies.find((colony) => colony.id === selectedId) ?? colonies[0],
@@ -542,6 +543,23 @@ function App() {
     media.addEventListener?.("change", syncViewport);
     return () => media.removeEventListener?.("change", syncViewport);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    window.__gattografyOpenLightbox = (src) => setLightboxSrc(src);
+    return () => {
+      if (window.__gattografyOpenLightbox) delete window.__gattografyOpenLightbox;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!lightboxSrc) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") setLightboxSrc("");
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [lightboxSrc]);
 
   useEffect(() => {
     if (!import.meta.env.PROD || typeof window === "undefined") return;
@@ -2722,6 +2740,19 @@ function App() {
           onClose={() => setModerationTarget(null)}
         />
       )}
+      {lightboxSrc && (
+        <div
+          className="lightbox"
+          role="dialog"
+          aria-label="Anteprima immagine"
+          onClick={(event) => event.target === event.currentTarget && setLightboxSrc("")}
+        >
+          <button className="lightbox-close" type="button" onClick={() => setLightboxSrc("")} aria-label="Chiudi">
+            <X size={18} />
+          </button>
+          <img className="lightbox-image" src={lightboxSrc} alt="" />
+        </div>
+      )}
     </main>
   );
 }
@@ -4361,7 +4392,8 @@ function ColonyFullPanel({
   isSiteAdmin,
 }) {
   const [activeTab, setActiveTab] = useState("Scheda");
-  const tabs = ["Scheda", "Permessi", "Sanitario", "Foto e gatti", "Discussione"];
+  const canManagePermissions = Boolean(isSiteAdmin || selected.adminId === currentUser?.id || selected.createdBy === currentUser?.id);
+  const tabs = ["Scheda", ...(canManagePermissions ? ["Permessi"] : []), "Sanitario", "Foto e gatti", "Discussione"];
   const isCollaborationPending = hasPendingCollaborationRequest(participationRequests, selected, currentUser);
 
   return (
@@ -5647,8 +5679,26 @@ function MobileHomeScreen({
   );
 }
 
-function PhotoImage({ photo, alt }) {
-  return <img src={photo || catPlaceholder} alt={alt} />;
+function PhotoImage({ photo, alt, onClick }) {
+  const src = photo || catPlaceholder;
+  const openLightbox = onClick || (typeof window !== "undefined" ? window.__gattografyOpenLightbox : null);
+  const isInteractive = Boolean(openLightbox);
+  return (
+    <img
+      src={src}
+      alt={alt}
+      onClick={isInteractive ? () => openLightbox(src) : undefined}
+      role={isInteractive ? "button" : undefined}
+      tabIndex={isInteractive ? 0 : undefined}
+      onKeyDown={
+        isInteractive
+          ? (event) => {
+              if (event.key === "Enter" || event.key === " ") openLightbox(src);
+            }
+          : undefined
+      }
+    />
+  );
 }
 
 createRoot(document.getElementById("root")).render(<App />);

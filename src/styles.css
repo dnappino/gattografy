@@ -1214,6 +1214,42 @@ kbd {
   justify-self: end;
 }
 
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(10, 16, 14, 0.72);
+}
+
+.lightbox-image {
+  max-width: min(1100px, calc(100vw - 56px));
+  max-height: calc(100vh - 56px);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  background: #fff;
+}
+
+.lightbox-close {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  display: grid;
+  place-items: center;
+}
+
+.lightbox-close:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
 .real-map {
   width: 100%;
   min-height: 410px;

@@ -64,6 +64,7 @@ function App() {
   const [showLogin, setShowLogin] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showColonyDetail, setShowColonyDetail] = useState(false);
   const [status, setStatus] = useState("");
   const [notifications, setNotifications] = useState([]);
   const [colonies, setColonies] = useState([]);
@@ -116,8 +117,21 @@ function App() {
       return;
     }
     const mapped = (data ?? []).map(mapDbColony).filter(isValidCoord);
+
+    // Compute cat counts without fetching all cat details.
+    const { data: catRows, error: catError } = await supabase.from("cats").select("id,colony_id");
+    if (!catError) {
+      const counts = (catRows ?? []).reduce((acc, row) => {
+        acc[row.colony_id] = (acc[row.colony_id] ?? 0) + 1;
+        return acc;
+      }, {});
+      mapped.forEach((colony) => {
+        colony.cats = counts[colony.id] ?? colony.cats ?? 0;
+      });
+    }
+
     setColonies(mapped);
-    if (mapped[0]) setSelectedId(mapped[0].id);
+    if (mapped[0]) setSelectedId((current) => current || mapped[0].id);
   }
 
   async function loadCats(colonyId) {
@@ -129,7 +143,11 @@ function App() {
       .eq("colony_id", colonyId)
       .order("created_at", { ascending: false });
     if (error) return;
-    setCats((data ?? []).map(mapDbCat));
+    const nextCats = (data ?? []).map(mapDbCat);
+    setCats(nextCats);
+    setColonies((items) =>
+      items.map((item) => (item.id === colonyId ? { ...item, cats: nextCats.length } : item)),
+    );
   }
 
   async function loadNotifications(userId) {
@@ -192,6 +210,7 @@ function App() {
       setCats([]);
       setShowMenu(false);
       setShowNotifications(false);
+      setShowColonyDetail(false);
       setShowLogin(false);
       setTab("home");
       setStatus("");
@@ -245,7 +264,7 @@ function App() {
 
           {selected && (
             <>
-              <article className="mobile-card colony-summary" onClick={() => setTab("new")} role="button" tabIndex={0}>
+              <article className="mobile-card colony-summary" onClick={() => setShowColonyDetail(true)} role="button" tabIndex={0}>
                 <img src={selected.photo || colonyPlaceholder} alt="" />
                 <div>
                   <strong>{selected.name}</strong>
@@ -257,6 +276,9 @@ function App() {
                 <span><Cat size={16} /> {selected.cats} Gatti</span>
                 <span><PawPrint size={16} /> {selected.kittens} Cucciolate</span>
               </div>
+              <button className="ghost" type="button" onClick={() => setShowColonyDetail(true)}>
+                Apri dettagli colonia
+              </button>
             </>
           )}
 
@@ -324,6 +346,41 @@ function App() {
               <button onClick={() => openFromMenu("profile")}><UserRound size={16} />Profilo</button>
               <button onClick={() => { setAction("colony"); openFromMenu("new"); }}><Menu size={16} />Nuova colonia</button>
               {sessionUser?.id && <button className="danger" onClick={logout}><X size={16} />Esci</button>}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {showColonyDetail && selected && (
+        <section className="overlay" onClick={(event) => event.target === event.currentTarget && setShowColonyDetail(false)}>
+          <div className="mobile-card sheet">
+            <div className="overlay-head">
+              <h2>{selected.name}</h2>
+              <button className="icon-button" onClick={() => setShowColonyDetail(false)}><X size={16} /></button>
+            </div>
+            <img className="photo-preview" src={selected.photo || colonyPlaceholder} alt="" />
+            <p className="hint">{selected.zone}</p>
+            <div className="stats">
+              <span><Cat size={16} /> {selected.cats} Gatti</span>
+              <span><PawPrint size={16} /> {selected.kittens} Cucciolate</span>
+            </div>
+            <div className="list">
+              {cats.length === 0 ? (
+                <p className="hint">Nessun gatto censito per questa colonia.</p>
+              ) : (
+                cats.map((cat) => (
+                  <article key={cat.id} className="cat-row">
+                    <img src={cat.photo || catPlaceholder} alt="" />
+                    <div>
+                      <strong>{cat.name}</strong>
+                      <p className="hint">{[cat.sex, cat.notes].filter(Boolean).join(" · ")}</p>
+                    </div>
+                  </article>
+                ))
+              )}
+            </div>
+            <div className="quick-actions">
+              <button onClick={() => requireAuth(async () => { setAction("cat"); setTab("new"); setShowColonyDetail(false); })}>Aggiungi un gatto</button>
             </div>
           </div>
         </section>
@@ -712,20 +769,47 @@ function LoginSheet({ onClose, onLoginSuccess }) {
   const [password, setPassword] = useState("");
   const [mode, setMode] = useState("login");
   const [status, setStatus] = useState("");
+  const [busy, setBusy] = useState(false);
 
   async function submit(event) {
     event.preventDefault();
-    const supabase = await getSupabaseClient();
-    if (!supabase) return;
-    const payload = mode === "register" ? { email, password } : { email, password };
-    const { data, error } = mode === "register"
-      ? await supabase.auth.signUp(payload)
-      : await supabase.auth.signInWithPassword(payload);
-    if (error) {
-      setStatus(error.message);
-      return;
+    if (busy) return;
+    setStatus("");
+    setBusy(true);
+    try {
+      const supabase = await getSupabaseClient();
+      if (!supabase) {
+        setStatus("Supabase non configurato. Imposta VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY.");
+        return;
+      }
+      const payload = { email, password };
+      const result = mode === "register"
+        ? await supabase.auth.signUp(payload)
+        : await supabase.auth.signInWithPassword(payload);
+
+      const { data, error } = result ?? {};
+      if (error) {
+        setStatus(error.message ?? "Errore autenticazione.");
+        return;
+      }
+
+      if (mode === "register") {
+        if (data?.session) {
+          onLoginSuccess(data.session.user);
+          return;
+        }
+        setStatus("Account creato. Controlla l'email per confermare e poi fai login.");
+        return;
+      }
+
+      if (data?.session?.user) onLoginSuccess(data.session.user);
+      else if (data?.user) onLoginSuccess(data.user);
+      else setStatus("Login completato, ma la sessione non e' disponibile.");
+    } catch (error) {
+      setStatus(error?.message ?? "Errore autenticazione.");
+    } finally {
+      setBusy(false);
     }
-    if (data.user) onLoginSuccess(data.user);
   }
 
   return (
@@ -740,7 +824,9 @@ function LoginSheet({ onClose, onLoginSuccess }) {
           Password
           <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required />
         </label>
-        <button className="primary" type="submit">{mode === "register" ? "Crea account" : "Entra"}</button>
+        <button className="primary" type="submit" disabled={busy}>
+          {busy ? "Attendi..." : mode === "register" ? "Crea account" : "Entra"}
+        </button>
       </form>
       <button className="ghost" onClick={() => setMode((m) => (m === "login" ? "register" : "login"))}>
         {mode === "login" ? "Passa a registrazione" : "Passa a login"}
